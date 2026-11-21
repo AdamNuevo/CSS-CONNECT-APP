@@ -1,0 +1,10 @@
+packages:
+  - 'apps/*'
+  - 'packages/*'
+
+verifyDepsBeforeRun: false
+
+onlyBuiltDependencies:
+  - argon2
+  - es5-ext
+  - esbuild

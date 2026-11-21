@@ -1,0 +1,16 @@
+{
+  "name": "ccs-hub",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev:api": "pnpm --filter @ccs-hub/api dev",
+    "dev:web": "pnpm --filter @ccs-hub/web dev",
+    "dev:mobile": "pnpm --filter @ccs-hub/mobile start",
+    "db:migrate": "pnpm --filter @ccs-hub/api db:migrate",
+    "db:seed": "pnpm --filter @ccs-hub/api db:seed",
+    "db:studio": "pnpm --filter @ccs-hub/api db:studio"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5"
+  }
+}
