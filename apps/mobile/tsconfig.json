@@ -4,7 +4,7 @@
     "strict": true,
     "paths": {
       "@ccs-hub/shared": [
-        "../../packages/shared/src/index.ts"
+        "./src/shared/index.ts"
       ],
       "@/*": [
         "./*"
