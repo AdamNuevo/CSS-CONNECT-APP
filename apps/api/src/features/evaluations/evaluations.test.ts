@@ -19,7 +19,7 @@ describe('Evaluations Service', () => {
   };
 
   it('returns inactive state when no period is currently open', async () => {
-    vi.spyOn(evaluationsRepository, 'findActivePeriod').mockResolvedValueOnce(null);
+    vi.spyOn(evaluationsRepository, 'findActivePeriod').mockResolvedValueOnce(null as any);
 
     const status = await evaluationsService.getStudentEvaluationStatus('student-1');
     expect(status.isActive).toBe(false);
@@ -75,7 +75,7 @@ describe('Evaluations Service', () => {
 
   it('saves new valid evaluation submission', async () => {
     vi.spyOn(evaluationsRepository, 'findActivePeriod').mockResolvedValueOnce(mockActivePeriod);
-    vi.spyOn(evaluationsRepository, 'findSubmission').mockResolvedValueOnce(null);
+    vi.spyOn(evaluationsRepository, 'findSubmission').mockResolvedValueOnce(null as any);
     vi.spyOn(evaluationsRepository, 'createSubmission').mockResolvedValueOnce({
       id: 'sub-2',
       periodId: mockActivePeriod.id,

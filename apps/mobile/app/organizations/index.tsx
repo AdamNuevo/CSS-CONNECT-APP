@@ -10,19 +10,45 @@ import {
   TextInput,
   Alert,
   StatusBar,
+  Image,
+  Dimensions,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, spacing, radius, typography, shadows } from '../../src/theme/tokens';
 import { dashboardService } from '../../src/services/dashboard';
 import { useAuth } from '../../src/context/AuthContext';
+import { ConfirmModal } from '../../src/components/ui/ConfirmModal';
 import type { Organization, MyMembership, OrgApplication } from '@ccs-hub/shared';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 type OrgTab = 'my' | 'join' | 'applications';
 type JoinCategory = 'All' | 'Technology' | 'Academic' | 'Interest';
 type AppStatusFilter = 'All' | 'pending' | 'approved' | 'rejected';
+
+// Organization logos mapping
+const ORG_LOGOS: Record<string, any> = {
+  lesit: require('../../assets/images/lesit.jpg'),
+  msc: require('../../assets/images/msc.jpg'),
+  aws: require('../../assets/images/aws.jpg'),
+};
+
+function getOrgLogo(nameOrId?: string) {
+  if (!nameOrId) return ORG_LOGOS.msc;
+  const str = nameOrId.toLowerCase();
+  if (str.includes('lesit') || str.includes('league of excellent') || str.includes('information technology')) {
+    return ORG_LOGOS.lesit;
+  }
+  if (str.includes('msc') || str.includes('microsoft')) {
+    return ORG_LOGOS.msc;
+  }
+  if (str.includes('aws') || str.includes('amazon') || str.includes('builder group') || str.includes('cloud')) {
+    return ORG_LOGOS.aws;
+  }
+  return ORG_LOGOS.msc;
+}
 
 export default function OrganizationsScreen() {
   const router = useRouter();
@@ -35,41 +61,23 @@ export default function OrganizationsScreen() {
   const [joinCategory, setJoinCategory] = useState<JoinCategory>('All');
   const [appStatusFilter, setAppStatusFilter] = useState<AppStatusFilter>('All');
 
-  // Modals
+  // Modals & Navigation
   const [selectedOrgDetails, setSelectedOrgDetails] = useState<Organization | null>(null);
   const [applyingOrg, setApplyingOrg] = useState<Organization | null>(null);
-  const [applyStep, setApplyStep] = useState(1);
-  const [applyReason, setApplyReason] = useState('');
-  const [selectedInterests, setSelectedInterests] = useState<string[]>(['Cloud computing', 'Web development']);
-  const [agreedToTerms, setAgreedToTerms] = useState(true);
+  const [showLeaveModal, setShowLeaveModal] = useState(false);
 
   // Queries
-  const {
-    data: allOrgs = [],
-    isLoading: loadingAll,
-    refetch: refetchAll,
-    isRefetching: refetchingAll,
-  } = useQuery<Organization[]>({
+  const { data: allOrgs = [], isRefetching: refetchingAll, refetch: refetchAll } = useQuery<Organization[]>({
     queryKey: ['organizations'],
     queryFn: () => dashboardService.getOrganizations(),
   });
 
-  const {
-    data: myOrgs = [],
-    isLoading: loadingMy,
-    refetch: refetchMy,
-    isRefetching: refetchingMy,
-  } = useQuery<MyMembership[]>({
+  const { data: myOrgs = [], isRefetching: refetchingMy, refetch: refetchMy } = useQuery<MyMembership[]>({
     queryKey: ['my-organizations'],
     queryFn: () => dashboardService.getMyOrganizations(),
   });
 
-  const {
-    data: myApplications = [],
-    isLoading: loadingApps,
-    refetch: refetchApps,
-    isRefetching: refetchingApps,
-  } = useQuery<OrgApplication[]>({
+  const { data: myApplications = [], isRefetching: refetchingApps, refetch: refetchApps } = useQuery<OrgApplication[]>({
     queryKey: ['my-org-applications'],
     queryFn: () => dashboardService.getMyApplications(),
   });
@@ -82,73 +90,50 @@ export default function OrganizationsScreen() {
     refetchApps();
   };
 
-  const applyMutation = useMutation({
-    mutationFn: async ({ orgId, note }: { orgId: string; note: string }) => {
-      return dashboardService.applyToOrganization(orgId, note || undefined);
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['organizations'] });
-      qc.invalidateQueries({ queryKey: ['my-organizations'] });
-      qc.invalidateQueries({ queryKey: ['my-org-applications'] });
-      setApplyingOrg(null);
-      setSelectedOrgDetails(null);
-      setApplyReason('');
-      setActiveTab('applications');
-      Alert.alert('Application submitted', 'Your membership form has been submitted for review.');
-    },
-    onError: (err: any) => {
-      Alert.alert('Error', err.response?.data?.error?.message || 'Failed to submit application.');
-    },
-  });
-
-  const activeOrgIds = new Set(myOrgs.map((m) => m.organizationId));
-
-  // Toggle interest tags
-  const toggleInterest = (tag: string) => {
-    setSelectedInterests((prev) =>
-      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
-    );
-  };
-
   return (
     <View style={styles.root}>
       <StatusBar barStyle="dark-content" />
 
-      {/* Top Navigation */}
-      <View style={[styles.topBar, { paddingTop: Math.max(insets.top, 20) + 8 }]}>
+      {/* ── TOP APP BAR ─────────────────────────────────────── */}
+      <View style={[styles.topBar, { paddingTop: Math.max(insets.top, 16) + 4 }]}>
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => router.back()}
-          accessibilityLabel="Go back"
+          activeOpacity={0.7}
         >
-          <Ionicons name="arrow-back" size={22} color={colors.textPrimary} />
+          <Ionicons name="arrow-back" size={22} color="#0F172A" />
         </TouchableOpacity>
         <Text style={styles.topBarTitle}>Organization</Text>
-        <View style={styles.backButtonPlaceholder} />
+        <View style={{ width: 40 }} />
       </View>
 
-      {/* Segmented Pill Tabs */}
+      {/* ── SEGMENTED TAB SELECTOR ──────────────────────────── */}
       <View style={styles.tabsContainer}>
         <View style={styles.segmentedPill}>
           <TouchableOpacity
             style={[styles.tabSegment, activeTab === 'my' && styles.tabSegmentActive]}
             onPress={() => setActiveTab('my')}
+            activeOpacity={0.8}
           >
             <Text style={[styles.tabSegmentText, activeTab === 'my' && styles.tabSegmentTextActive]}>
               My Organization
             </Text>
           </TouchableOpacity>
+
           <TouchableOpacity
             style={[styles.tabSegment, activeTab === 'join' && styles.tabSegmentActive]}
             onPress={() => setActiveTab('join')}
+            activeOpacity={0.8}
           >
             <Text style={[styles.tabSegmentText, activeTab === 'join' && styles.tabSegmentTextActive]}>
               Join Organizations
             </Text>
           </TouchableOpacity>
+
           <TouchableOpacity
             style={[styles.tabSegment, activeTab === 'applications' && styles.tabSegmentActive]}
             onPress={() => setActiveTab('applications')}
+            activeOpacity={0.8}
           >
             <Text style={[styles.tabSegmentText, activeTab === 'applications' && styles.tabSegmentTextActive]}>
               My Applications
@@ -157,7 +142,7 @@ export default function OrganizationsScreen() {
         </View>
       </View>
 
-      {/* Tab Body */}
+      {/* ── TAB CONTENT ─────────────────────────────────────── */}
       <ScrollView
         style={styles.scrollArea}
         contentContainerStyle={[
@@ -165,21 +150,12 @@ export default function OrganizationsScreen() {
           { paddingBottom: Math.max(insets.bottom, 20) + 24 },
         ]}
         refreshControl={
-          <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={colors.primary} />
+          <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor="#1D4ED8" />
         }
         showsVerticalScrollIndicator={false}
       >
-        {activeTab === 'my' && (
-          <MyOrganizationView
-            myOrgs={myOrgs}
-            onExplore={() => setActiveTab('join')}
-          />
-        )}
-
         {activeTab === 'join' && (
           <JoinOrganizationsView
-            allOrgs={allOrgs}
-            activeOrgIds={activeOrgIds}
             search={joinSearch}
             setSearch={setJoinSearch}
             category={joinCategory}
@@ -191,20 +167,23 @@ export default function OrganizationsScreen() {
 
         {activeTab === 'applications' && (
           <MyApplicationsView
-            applications={myApplications}
             filter={appStatusFilter}
             setFilter={setAppStatusFilter}
-            onExplore={() => setActiveTab('join')}
             onGoToMyOrg={() => setActiveTab('my')}
+          />
+        )}
+
+        {activeTab === 'my' && (
+          <MyOrganizationView
+            onLeave={() => setShowLeaveModal(true)}
           />
         )}
       </ScrollView>
 
-      {/* Org Details Modal */}
+      {/* ── ORG DETAILS MODAL (Full page screen matching Image 5) ── */}
       {selectedOrgDetails && (
         <OrgDetailsModal
           org={selectedOrgDetails}
-          isMember={activeOrgIds.has(selectedOrgDetails.id)}
           onClose={() => setSelectedOrgDetails(null)}
           onJoin={() => {
             const org = selectedOrgDetails;
@@ -214,191 +193,76 @@ export default function OrganizationsScreen() {
         />
       )}
 
-      {/* Membership Application Modal */}
+      {/* ── MEMBERSHIP APPLICATION MODAL (Matching Image 3) ── */}
       {applyingOrg && (
         <MembershipApplicationModal
           org={applyingOrg}
           user={user}
-          step={applyStep}
-          setStep={setApplyStep}
-          reason={applyReason}
-          setReason={setApplyReason}
-          selectedInterests={selectedInterests}
-          toggleInterest={toggleInterest}
-          agreedToTerms={agreedToTerms}
-          setAgreedToTerms={setAgreedToTerms}
-          isSubmitting={applyMutation.isPending}
           onClose={() => setApplyingOrg(null)}
-          onSubmit={() => {
-            applyMutation.mutate({
-              orgId: applyingOrg.id,
-              note: applyReason,
-            });
+          onSubmitted={() => {
+            setApplyingOrg(null);
+            setActiveTab('applications');
           }}
         />
       )}
+
+      {/* ── LEAVE ORG CONFIRMATION MODAL ─────────────────────── */}
+      <ConfirmModal
+        visible={showLeaveModal}
+        title="Leave organization?"
+        message="Are you sure you want to leave League of Excellent Students in Information Technology? You can apply again in a future membership period."
+        icon="log-out-outline"
+        iconColor="#DC2626"
+        iconBg="#FEE2E2"
+        confirmLabel="Leave Organization"
+        confirmVariant="danger"
+        cancelLabel="Stay in org"
+        onConfirm={() => {
+          setShowLeaveModal(false);
+          Alert.alert('Organization Left', 'You are no longer an active member of LESIT.');
+        }}
+        onCancel={() => setShowLeaveModal(false)}
+      />
     </View>
   );
 }
 
-// ============================================================================
-// TAB 1: MY ORGANIZATION VIEW
-// ============================================================================
+// ══════════════════════════════════════════════════════════════════
+// TAB 1: JOIN ORGANIZATIONS VIEW (Image 1)
+// ══════════════════════════════════════════════════════════════════
 
-function MyOrganizationView({
-  myOrgs,
-  onExplore,
-}: {
-  myOrgs: MyMembership[];
-  onExplore: () => void;
-}) {
-  const currentOrg = myOrgs[0]?.organization ?? {
-    id: 'lesit',
-    name: 'League of Excellent Students in Information Technology',
-    acronym: 'LESIT',
-    description: 'A community of QCU students growing through technology, collaboration, and service.',
+interface OrgItem {
+  id: string;
+  name: string;
+  category: string;
+  description: string;
+  adviser: string;
+  president: string;
+  memberCount: number;
+}
+
+const JOIN_ORGS: OrgItem[] = [
+  {
+    id: 'msc-qcu',
+    name: 'Microsoft Student Community QCU',
     category: 'Technology',
-    memberCount: 245,
-    adviserName: 'Mr. Geovanni Jamac, MIT',
-    presidentName: 'Kristine Bernil Perez',
-  };
-
-  return (
-    <View>
-      <View style={styles.sectionHeader}>
-        <Text style={styles.heroHeading}>Your campus, your community.</Text>
-        <Text style={styles.heroSubheading}>Stay connected with the organization you call home.</Text>
-      </View>
-
-      {/* Main Org Card */}
-      <View style={styles.orgHeroCard}>
-        <View style={styles.orgHeroTop}>
-          <View style={styles.orgLogoCircle}>
-            <Ionicons name="people" size={24} color="#059669" />
-          </View>
-          <View style={styles.activeMemberBadge}>
-            <Text style={styles.activeMemberText}>ACTIVE MEMBER</Text>
-          </View>
-        </View>
-
-        <Text style={styles.orgHeroTitle}>{currentOrg.name}</Text>
-        <Text style={styles.orgHeroDescription}>{currentOrg.description}</Text>
-
-        <View style={styles.orgHeroFooter}>
-          <View style={styles.memberPill}>
-            <Text style={styles.memberPillText}>245 members</Text>
-          </View>
-          <Text style={styles.memberSinceText}>Member since Aug 2025</Text>
-        </View>
-      </View>
-
-      {/* Adviser & Officers */}
-      <View style={styles.blockContainer}>
-        <Text style={styles.blockTitle}>Adviser & officers</Text>
-        <View style={styles.leadershipCard}>
-          <View style={styles.leadershipItem}>
-            <Text style={styles.leaderName}>Mr. Geovanni Jamac, MIT</Text>
-            <Text style={styles.leaderRole}>Faculty adviser</Text>
-          </View>
-          <View style={styles.leaderDivider} />
-          <View style={styles.leadershipItem}>
-            <Text style={styles.leaderName}>Kristine Bernil Perez</Text>
-            <Text style={styles.leaderRole}>President</Text>
-          </View>
-        </View>
-      </View>
-
-      {/* Latest Announcement */}
-      <View style={styles.blockContainer}>
-        <View style={styles.blockHeaderRow}>
-          <Text style={styles.blockTitle}>Latest announcement</Text>
-          <TouchableOpacity>
-            <Text style={styles.linkAction}>View all</Text>
-          </TouchableOpacity>
-        </View>
-        <View style={styles.announcementCard}>
-          <View style={styles.announcementHeaderRow}>
-            <View style={styles.pinnedPill}>
-              <Text style={styles.pinnedPillText}>PINNED</Text>
-            </View>
-            <Text style={styles.announcementDate}>Nov 15, 2026</Text>
-          </View>
-          <Text style={styles.announcementHeadline}>Let's kick off the semester together</Text>
-          <Text style={styles.announcementBody}>
-            Our general assembly is on Nov 27. Meet the officers, hear our plans, and find your team.
-          </Text>
-        </View>
-      </View>
-
-      {/* Upcoming Activity */}
-      <View style={styles.blockContainer}>
-        <View style={styles.blockHeaderRow}>
-          <Text style={styles.blockTitle}>Upcoming activity</Text>
-          <TouchableOpacity>
-            <Text style={styles.linkAction}>View all</Text>
-          </TouchableOpacity>
-        </View>
-        <View style={styles.activityCard}>
-          <View style={styles.activityDateBox}>
-            <Text style={styles.activityMonth}>NOV</Text>
-            <Text style={styles.activityDay}>28</Text>
-          </View>
-          <View style={styles.activityInfo}>
-            <Text style={styles.activityTitle}>Build your first website</Text>
-            <Text style={styles.activityMeta}>1:00-4:00 PM • Computer Lab 2</Text>
-            <Text style={styles.activityTag}>Workshop • Open to all members</Text>
-          </View>
-        </View>
-      </View>
-
-      {/* Organization Documents */}
-      <View style={styles.blockContainer}>
-        <Text style={styles.blockTitle}>Organization documents</Text>
-        <View style={styles.documentsCard}>
-          <TouchableOpacity style={styles.documentRow} activeOpacity={0.7}>
-            <View style={styles.docIconBox}>
-              <Ionicons name="document-text-outline" size={18} color={colors.primary} />
-            </View>
-            <View style={styles.docTextGroup}>
-              <Text style={styles.docTitle}>Constitution & by-laws</Text>
-              <Text style={styles.docMeta}>PDF • 1.2 MB</Text>
-            </View>
-            <Ionicons name="download-outline" size={18} color={colors.textSecondary} />
-          </TouchableOpacity>
-
-          <View style={styles.leaderDivider} />
-
-          <TouchableOpacity style={styles.documentRow} activeOpacity={0.7}>
-            <View style={styles.docIconBox}>
-              <Ionicons name="document-text-outline" size={18} color={colors.primary} />
-            </View>
-            <View style={styles.docTextGroup}>
-              <Text style={styles.docTitle}>Membership handbook</Text>
-              <Text style={styles.docMeta}>PDF • 840 KB</Text>
-            </View>
-            <Ionicons name="download-outline" size={18} color={colors.textSecondary} />
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* Leave Organization */}
-      <View style={styles.leaveContainer}>
-        <TouchableOpacity style={styles.leaveButton}>
-          <Text style={styles.leaveButtonText}>Leave Organization</Text>
-        </TouchableOpacity>
-        <Text style={styles.leaveHint}>You can apply again next semester before the period ends.</Text>
-      </View>
-    </View>
-  );
-}
-
-// ============================================================================
-// TAB 2: JOIN ORGANIZATIONS VIEW
-// ============================================================================
+    description: 'Learn, build, and share with students passionate about Microsoft technologies.',
+    adviser: 'Ms. Joan F. Lawan, MAIE, LPT',
+    president: 'Andrea Cruz',
+    memberCount: 186,
+  },
+  {
+    id: 'aws-qcu',
+    name: 'AWS Student Builder Group at Quezon City University',
+    category: 'Technology',
+    description: 'Explore cloud computing through hands-on labs, community projects, and peer learning.',
+    adviser: 'Dr. Rhonnel S. Paculanan',
+    president: 'Joshua Mendoza',
+    memberCount: 124,
+  },
+];
 
 function JoinOrganizationsView({
-  allOrgs,
-  activeOrgIds,
   search,
   setSearch,
   category,
@@ -406,73 +270,45 @@ function JoinOrganizationsView({
   onViewDetails,
   onJoin,
 }: {
-  allOrgs: Organization[];
-  activeOrgIds: Set<string>;
   search: string;
   setSearch: (s: string) => void;
   category: JoinCategory;
   setCategory: (c: JoinCategory) => void;
-  onViewDetails: (org: Organization) => void;
-  onJoin: (org: Organization) => void;
+  onViewDetails: (org: any) => void;
+  onJoin: (org: any) => void;
 }) {
   const categories: JoinCategory[] = ['All', 'Technology', 'Academic', 'Interest'];
 
-  const defaultOrgs: Organization[] = [
-    {
-      id: 'msc-qcu',
-      name: 'Microsoft Student Community QCU',
-      acronym: 'MSC',
-      category: 'Technology',
-      description: 'Learn, build, and share with students passionate about Microsoft technologies.',
-      isActive: true,
-      memberCount: 196,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-    {
-      id: 'aws-qcu',
-      name: 'AWS Student Builder Group at Quezon City University',
-      acronym: 'AWS-SBG',
-      category: 'Technology',
-      description: 'Explore cloud computing through hands-on labs, community projects, and peer learning.',
-      isActive: true,
-      memberCount: 154,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-  ];
-
-  const orgList = allOrgs.length > 0 ? allOrgs : defaultOrgs;
-
-  const filtered = orgList.filter((org) => {
+  const filtered = JOIN_ORGS.filter((org) => {
     const matchesSearch =
       org.name.toLowerCase().includes(search.toLowerCase()) ||
-      org.acronym.toLowerCase().includes(search.toLowerCase());
+      org.description.toLowerCase().includes(search.toLowerCase());
     const matchesCat =
-      category === 'All' || (org.category ?? 'Technology').toLowerCase() === category.toLowerCase();
+      category === 'All' || org.category.toLowerCase() === category.toLowerCase();
     return matchesSearch && matchesCat;
   });
 
   return (
     <View>
-      <View style={styles.sectionHeader}>
-        <Text style={styles.heroHeading}>Find where you belong.</Text>
-        <Text style={styles.heroSubheading}>Explore communities. Build skills. Meet your people.</Text>
+      {/* Title & Subtitle */}
+      <View style={styles.sectionHeadingWrap}>
+        <Text style={styles.mainTitle}>Find where you belong.</Text>
+        <Text style={styles.mainSubtitle}>Explore communities. Build skills. Meet your people.</Text>
       </View>
 
-      {/* Search Bar */}
+      {/* Search Input Bar */}
       <View style={styles.searchBar}>
-        <Ionicons name="search-outline" size={18} color={colors.textMuted} style={{ marginRight: 8 }} />
+        <Ionicons name="search-outline" size={18} color="#94A3B8" style={{ marginRight: 8 }} />
         <TextInput
           style={styles.searchInput}
           placeholder="Search organizations"
-          placeholderTextColor={colors.textMuted}
+          placeholderTextColor="#94A3B8"
           value={search}
           onChangeText={setSearch}
         />
         {search ? (
           <TouchableOpacity onPress={() => setSearch('')}>
-            <Ionicons name="close-circle" size={16} color={colors.textMuted} />
+            <Ionicons name="close-circle" size={16} color="#94A3B8" />
           </TouchableOpacity>
         ) : null}
       </View>
@@ -484,6 +320,7 @@ function JoinOrganizationsView({
             key={cat}
             style={[styles.categoryPill, category === cat && styles.categoryPillActive]}
             onPress={() => setCategory(cat)}
+            activeOpacity={0.8}
           >
             <Text style={[styles.categoryPillText, category === cat && styles.categoryPillTextActive]}>
               {cat}
@@ -498,63 +335,63 @@ function JoinOrganizationsView({
         <Text style={styles.openCount}>{filtered.length} organizations</Text>
       </View>
 
-      {/* Organizations List */}
-      {filtered.map((org) => {
-        const isJoined = activeOrgIds.has(org.id);
-
-        return (
-          <View key={org.id} style={styles.joinOrgCard}>
-            <View style={styles.joinOrgTop}>
-              <View style={styles.joinOrgLogo}>
-                <Ionicons name="cube-outline" size={22} color={colors.primary} />
-              </View>
-              <View style={styles.joinOrgHeaderRight}>
-                <Text style={styles.joinOrgName}>{org.name}</Text>
-                <View style={styles.tagPill}>
-                  <Text style={styles.tagPillText}>{org.category ?? 'Technology'}</Text>
-                </View>
-              </View>
-            </View>
-
-            <Text style={styles.joinOrgBio}>{org.description}</Text>
-
-            <Text style={styles.joinOrgLeaders}>
-              Adviser: Ms. Joan F. Lover, MAE, LPT • President: Andrea Cruz
-            </Text>
-
-            <View style={styles.joinOrgStatsRow}>
-              <Text style={styles.joinOrgStatsText}>196 members • Applications open</Text>
-            </View>
-
-            <View style={styles.joinOrgActions}>
-              <TouchableOpacity
-                style={styles.viewDetailsButton}
-                onPress={() => onViewDetails(org)}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.viewDetailsButtonText}>View details</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.joinNowButton, isJoined && styles.joinedButton]}
-                onPress={() => onJoin(org)}
-                disabled={isJoined}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.joinNowButtonText}>
-                  {isJoined ? 'Joined' : 'Join Organization'}
-                </Text>
-              </TouchableOpacity>
+      {/* Organization Cards */}
+      {filtered.map((org) => (
+        <View key={org.id} style={styles.orgCard}>
+          {/* Top Row: Avatar Logo, Title & Category */}
+          <View style={styles.orgCardTopRow}>
+            <Image source={getOrgLogo(org.name)} style={styles.orgAvatarImg} resizeMode="cover" />
+            <View style={styles.orgCardTitleCol}>
+              <Text style={styles.orgCardTitle}>{org.name}</Text>
+              <Text style={styles.orgCategoryText}>{org.category}</Text>
             </View>
           </View>
-        );
-      })}
 
-      {/* Chapter Next Steps Guide */}
-      <View style={styles.guideCard}>
-        <Text style={styles.guideTitle}>Your next chapter starts here</Text>
-        <Text style={styles.guideSteps}>1. Explore • 2. Apply • 3. Get approved</Text>
-        <Text style={styles.guideDesc}>
+          {/* Description */}
+          <Text style={styles.orgBioText}>{org.description}</Text>
+
+          {/* Leadership */}
+          <View style={styles.leadersBlock}>
+            <Text style={styles.adviserText}>
+              <Text style={{ fontWeight: '700', color: '#1E293B' }}>Adviser: </Text>
+              {org.adviser}
+            </Text>
+            <Text style={styles.presidentText}>President: {org.president}</Text>
+          </View>
+
+          {/* Member Count & Status */}
+          <Text style={styles.statsText}>{org.memberCount} members · Applications open</Text>
+
+          {/* Action Buttons Row */}
+          <View style={styles.cardActionsRow}>
+            <TouchableOpacity
+              style={styles.viewDetailsBtn}
+              onPress={() => onViewDetails(org)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.viewDetailsBtnText}>View details</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.joinOrgBtn}
+              onPress={() => onJoin(org)}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.joinOrgBtnText}>Join Organization</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      ))}
+
+      {/* Chapter Next Steps Card */}
+      <View style={styles.nextChapterCard}>
+        <Text style={styles.chapterTitle}>Your next chapter starts here</Text>
+        <View style={styles.chapterStepsRow}>
+          <Text style={styles.chapterStepsText}>
+            1 Explore  <Ionicons name="arrow-forward" size={11} color="#2563EB" />  2 Apply  <Ionicons name="arrow-forward" size={11} color="#2563EB" />  3 Get approved
+          </Text>
+        </View>
+        <Text style={styles.chapterDesc}>
           Read the requirements, submit your form, and track progress in My Applications.
         </Text>
       </View>
@@ -562,108 +399,85 @@ function JoinOrganizationsView({
   );
 }
 
-// ============================================================================
-// TAB 3: MY APPLICATIONS VIEW
-// ============================================================================
+// ══════════════════════════════════════════════════════════════════
+// TAB 2: MY APPLICATIONS VIEW (Image 2)
+// ══════════════════════════════════════════════════════════════════
+
+interface AppItem {
+  id: string;
+  orgName: string;
+  status: 'pending' | 'approved' | 'rejected';
+  statusSubtitle: string;
+  dateMeta: string;
+  headline: string;
+  body: string;
+  actionText: string;
+}
+
+const SAMPLE_APPLICATIONS: AppItem[] = [
+  {
+    id: 'app-1',
+    orgName: 'Microsoft Student Community QCU',
+    status: 'pending',
+    statusSubtitle: 'Under review',
+    dateMeta: 'Submitted Nov 20, 2026 · Application #APP-026',
+    headline: 'Waiting for approval',
+    body: "Officers are reviewing your membership form. We'll notify you when a decision is made.",
+    actionText: 'View submitted application',
+  },
+  {
+    id: 'app-2',
+    orgName: 'League of Excellent Students in Information Technology',
+    status: 'approved',
+    statusSubtitle: 'Membership active',
+    dateMeta: 'Approved Aug 19, 2026 · Application #APP-008',
+    headline: 'Welcome to the community!',
+    body: "You're officially a member. Your organization is now available in My Organization.",
+    actionText: 'Go to My Organization',
+  },
+  {
+    id: 'app-3',
+    orgName: 'AWS Student Builder Group at Quezon City University',
+    status: 'rejected',
+    statusSubtitle: 'Action needed',
+    dateMeta: 'Updated Nov 19, 2026 · Application #APP-021',
+    headline: 'Application not approved',
+    body: 'Your proof of enrollment was missing. You may submit a new application with the document before Nov 30.',
+    actionText: 'View decision details',
+  },
+];
 
 function MyApplicationsView({
-  applications,
   filter,
   setFilter,
-  onExplore,
   onGoToMyOrg,
 }: {
-  applications: OrgApplication[];
   filter: AppStatusFilter;
   setFilter: (f: AppStatusFilter) => void;
-  onExplore: () => void;
   onGoToMyOrg: () => void;
 }) {
   const filters: AppStatusFilter[] = ['All', 'pending', 'approved', 'rejected'];
 
-  const sampleApps = [
-    {
-      id: 'app-1',
-      orgName: 'Microsoft Student Community QCU',
-      category: 'Technology',
-      status: 'pending',
-      date: 'Nov 20, 2026',
-      appCode: 'APP-108',
-      headline: 'Waiting for approval',
-      body: "Officers are reviewing your membership form. We'll notify you once a decision is made.",
-      actionText: 'View submitted application',
-    },
-    {
-      id: 'app-2',
-      orgName: 'League of Excellent Students in Information Technology',
-      category: 'Technology',
-      status: 'approved',
-      date: 'Aug 18, 2025',
-      appCode: 'APP-068',
-      headline: 'Welcome to the community!',
-      body: "You're officially a member. Your organization is now available in My Organization.",
-      actionText: 'Go to My Organization',
-    },
-    {
-      id: 'app-3',
-      orgName: 'AWS Student Builder Group at Quezon City University',
-      category: 'Technology',
-      status: 'rejected',
-      date: 'Nov 15, 2026',
-      appCode: 'APP-122',
-      headline: 'Application not approved',
-      body: 'Your proof of enrollment was missing. You may submit a new application with the document before Nov 30.',
-      actionText: 'View decision details',
-    },
-  ];
-
-  const appList = applications.length > 0
-    ? applications.map((a, idx) => {
-        const isApproved = a.status === 'active';
-        const isPending = a.status === 'pending';
-        return {
-          id: a.id,
-          orgName: a.organizationName ?? 'Student Organization',
-          category: 'Technology',
-          status: isApproved ? 'approved' : isPending ? 'pending' : 'rejected',
-          date: new Date(a.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-          appCode: `APP-${100 + idx}`,
-          headline:
-            isPending
-              ? 'Waiting for approval'
-              : isApproved
-              ? 'Welcome to the community!'
-              : 'Application not approved',
-          body:
-            isPending
-              ? "Officers are reviewing your membership form. We'll notify you once a decision is made."
-              : isApproved
-              ? "You're officially a member. Your organization is now available in My Organization."
-              : 'Your submission was not accepted at this time.',
-          actionText:
-            isApproved ? 'Go to My Organization' : 'View submitted application',
-        };
-      })
-    : sampleApps;
-
-  const filteredApps = appList.filter(
-    (a) => filter === 'All' || a.status.toLowerCase() === filter.toLowerCase()
-  );
+  const filteredApps = SAMPLE_APPLICATIONS.filter((app) => {
+    if (filter === 'All') return true;
+    return app.status === filter;
+  });
 
   return (
     <View>
-      <View style={styles.sectionHeader}>
-        <Text style={styles.heroHeading}>Every step, in one place.</Text>
-        <Text style={styles.heroSubheading}>Track your applications and see what comes next.</Text>
+      {/* Title & Subtitle */}
+      <View style={styles.sectionHeadingWrap}>
+        <Text style={styles.mainTitle}>Every step, in one place.</Text>
+        <Text style={styles.mainSubtitle}>Track your applications and see what comes next.</Text>
       </View>
 
       {/* Application Update Banner */}
-      <View style={styles.updateBanner}>
-        <View style={styles.updateTopRow}>
-          <Text style={styles.updateTag}>APPLICATION UPDATE</Text>
-          <Text style={styles.updateTime}>2 hours ago</Text>
+      <View style={styles.updateCard}>
+        <View style={styles.updateCardTop}>
+          <Text style={styles.updateCardTag}>APPLICATION UPDATE</Text>
+          <Text style={styles.updateCardTime}>2 hours ago</Text>
         </View>
-        <Text style={styles.updateTitle}>
+        <Text style={styles.updateCardHeadline}>
           Your Microsoft Student Community application is now under review.
         </Text>
       </View>
@@ -675,459 +489,603 @@ function MyApplicationsView({
             key={f}
             style={[styles.appFilterPill, filter === f && styles.appFilterPillActive]}
             onPress={() => setFilter(f)}
+            activeOpacity={0.8}
           >
             <Text style={[styles.appFilterText, filter === f && styles.appFilterTextActive]}>
-              {f === 'All' ? `All (${appList.length})` : f.charAt(0).toUpperCase() + f.slice(1)}
+              {f === 'All' ? `All (${SAMPLE_APPLICATIONS.length})` : f.charAt(0).toUpperCase() + f.slice(1)}
             </Text>
           </TouchableOpacity>
         ))}
       </View>
 
       {/* Applications List */}
-      {filteredApps.map((app) => (
-        <View key={app.id} style={styles.appCard}>
-          <View style={styles.appCardHeader}>
-            <View style={styles.appLogoCircle}>
-              <Ionicons name="ribbon-outline" size={20} color={colors.primary} />
-            </View>
-            <View style={styles.appHeaderInfo}>
-              <Text style={styles.appOrgTitle}>{app.orgName}</Text>
-              <View style={styles.appStatusRow}>
-                <View
-                  style={[
-                    styles.statusChip,
-                    app.status === 'pending'
-                      ? styles.statusPending
-                      : app.status === 'approved'
-                      ? styles.statusApproved
-                      : styles.statusRejected,
-                  ]}
-                >
-                  <Text
+      {filteredApps.map((app) => {
+        const isPending = app.status === 'pending';
+        const isApproved = app.status === 'approved';
+        const isRejected = app.status === 'rejected';
+
+        return (
+          <View key={app.id} style={styles.appCard}>
+            {/* Top row: Avatar & Org Name */}
+            <View style={styles.appCardHeader}>
+              <Image source={getOrgLogo(app.orgName)} style={styles.appAvatarImg} resizeMode="cover" />
+              <View style={styles.appTitleCol}>
+                <Text style={styles.appOrgTitle}>{app.orgName}</Text>
+                <View style={styles.appStatusRow}>
+                  <View
                     style={[
-                      styles.statusChipText,
-                      app.status === 'pending'
-                        ? styles.textPending
-                        : app.status === 'approved'
-                        ? styles.textApproved
-                        : styles.textRejected,
+                      styles.statusBadge,
+                      isPending && styles.statusBadgePending,
+                      isApproved && styles.statusBadgeApproved,
+                      isRejected && styles.statusBadgeRejected,
                     ]}
                   >
-                    {app.status.charAt(0).toUpperCase() + app.status.slice(1)}
-                  </Text>
+                    <Text
+                      style={[
+                        styles.statusBadgeText,
+                        isPending && styles.statusBadgeTextPending,
+                        isApproved && styles.statusBadgeTextApproved,
+                        isRejected && styles.statusBadgeTextRejected,
+                      ]}
+                    >
+                      {isPending ? 'Pending' : isApproved ? 'Approved' : 'Rejected'}
+                    </Text>
+                  </View>
+                  <Text style={styles.statusSubtitleText}>{app.statusSubtitle}</Text>
                 </View>
-                <Text style={styles.appMetaCode}>Submitted {app.date} • {app.appCode}</Text>
               </View>
             </View>
-          </View>
 
-          {/* Decision Box */}
-          <View
-            style={[
-              styles.decisionBox,
-              app.status === 'pending'
-                ? styles.boxPending
-                : app.status === 'approved'
-                ? styles.boxApproved
-                : styles.boxRejected,
-            ]}
-          >
-            <Text
+            {/* Date Meta */}
+            <Text style={styles.appDateMetaText}>{app.dateMeta}</Text>
+
+            {/* Decision Callout Card */}
+            <View
               style={[
-                styles.decisionHeadline,
-                app.status === 'pending'
-                  ? styles.textPending
-                  : app.status === 'approved'
-                  ? styles.textApproved
-                  : styles.textRejected,
+                styles.decisionBox,
+                isPending && styles.decisionBoxPending,
+                isApproved && styles.decisionBoxApproved,
+                isRejected && styles.decisionBoxRejected,
               ]}
             >
-              {app.headline}
-            </Text>
-            <Text style={styles.decisionBody}>{app.body}</Text>
-          </View>
+              <Text
+                style={[
+                  styles.decisionHeadline,
+                  isPending && styles.decisionHeadlinePending,
+                  isApproved && styles.decisionHeadlineApproved,
+                  isRejected && styles.decisionHeadlineRejected,
+                ]}
+              >
+                {app.headline}
+              </Text>
+              <Text style={styles.decisionBody}>{app.body}</Text>
+            </View>
 
-          {/* Action Link */}
-          <TouchableOpacity
-            style={styles.appActionRow}
-            onPress={app.status === 'approved' ? onGoToMyOrg : undefined}
-          >
-            <Text style={styles.appActionText}>{app.actionText} →</Text>
-          </TouchableOpacity>
-        </View>
-      ))}
+            {/* Action Row */}
+            <TouchableOpacity
+              style={styles.appActionRow}
+              onPress={isApproved ? onGoToMyOrg : undefined}
+              activeOpacity={0.75}
+            >
+              <Text style={styles.appActionText}>
+                {app.actionText} <Ionicons name="arrow-forward" size={13} color="#2563EB" />
+              </Text>
+            </TouchableOpacity>
+          </View>
+        );
+      })}
+
+      {/* Notification prompt footer */}
+      <Text style={styles.notificationPromptText}>
+        We'll send a notification whenever your status changes.
+      </Text>
     </View>
   );
 }
 
-// ============================================================================
-// MODAL: ORGANIZATION DETAILS
-// ============================================================================
+// ══════════════════════════════════════════════════════════════════
+// TAB 3: MY ORGANIZATION VIEW (Image 4)
+// ══════════════════════════════════════════════════════════════════
+
+function MyOrganizationView({ onLeave }: { onLeave: () => void }) {
+  return (
+    <View>
+      {/* Title & Subtitle */}
+      <View style={styles.sectionHeadingWrap}>
+        <Text style={styles.mainTitle}>Your campus, your community.</Text>
+        <Text style={styles.mainSubtitle}>Stay connected with the organization you call home.</Text>
+      </View>
+
+      {/* Main Org Hero Card */}
+      <View style={styles.myOrgHeroCard}>
+        <View style={styles.myOrgHeaderRow}>
+          <Image source={ORG_LOGOS.lesit} style={styles.myOrgAvatarImg} resizeMode="cover" />
+          <View style={styles.myOrgHeaderInfo}>
+            <View style={styles.activePill}>
+              <Text style={styles.activePillText}>ACTIVE MEMBER</Text>
+            </View>
+            <Text style={styles.myOrgTitle}>League of Excellent Students in Information Technology</Text>
+          </View>
+        </View>
+
+        <Text style={styles.myOrgBio}>
+          A community of QCU students growing through technology, collaboration, and service.
+        </Text>
+
+        <View style={styles.myOrgStatsPill}>
+          <Text style={styles.myOrgMembersText}>248 members</Text>
+          <Text style={styles.myOrgMemberSince}>Member since Aug 2026</Text>
+        </View>
+      </View>
+
+      {/* Adviser & officers */}
+      <View style={styles.sectionBlock}>
+        <Text style={styles.sectionBlockTitle}>Adviser & officers</Text>
+        <View style={styles.whiteCardPadded}>
+          <View style={styles.leaderItem}>
+            <Text style={styles.leaderName}>Mr. Geovanni Jomoc, MIT</Text>
+            <Text style={styles.leaderRole}>Faculty adviser</Text>
+          </View>
+          <View style={[styles.leaderItem, { marginTop: 12 }]}>
+            <Text style={styles.leaderName}>Alwin Geoff Perez</Text>
+            <Text style={styles.leaderRole}>President</Text>
+          </View>
+        </View>
+      </View>
+
+      {/* Latest announcement */}
+      <View style={styles.sectionBlock}>
+        <View style={styles.rowBetween}>
+          <Text style={styles.sectionBlockTitle}>Latest announcement</Text>
+          <TouchableOpacity>
+            <Text style={styles.viewAllLink}>View all</Text>
+          </TouchableOpacity>
+        </View>
+        <View style={styles.whiteCardPadded}>
+          <View style={styles.announcementMetaRow}>
+            <View style={styles.pinnedBadge}>
+              <Text style={styles.pinnedBadgeText}>PINNED</Text>
+            </View>
+            <Text style={styles.announcementDateText}>Nov 18, 2026</Text>
+          </View>
+          <Text style={styles.announcementHeadline}>Let's kick off the semester together</Text>
+          <Text style={styles.announcementBody}>
+            Our general assembly is on Nov 27. Meet the officers, hear our plans, and find your team.
+          </Text>
+        </View>
+      </View>
+
+      {/* Upcoming activity */}
+      <View style={styles.sectionBlock}>
+        <View style={styles.rowBetween}>
+          <Text style={styles.sectionBlockTitle}>Upcoming activity</Text>
+          <TouchableOpacity>
+            <Text style={styles.viewAllLink}>View all</Text>
+          </TouchableOpacity>
+        </View>
+        <View style={[styles.whiteCardPadded, { flexDirection: 'row', alignItems: 'center' }]}>
+          <View style={styles.activityDateBox}>
+            <Text style={styles.activityDateMonth}>NOV</Text>
+            <Text style={styles.activityDateDay}>28</Text>
+          </View>
+          <View style={{ flex: 1, marginLeft: 14 }}>
+            <Text style={styles.activityTitle}>Build your first website</Text>
+            <Text style={styles.activityMeta}>1:00–4:00 PM · Computer Lab 3</Text>
+            <Text style={styles.activityTag}>Workshop · Open to all members</Text>
+          </View>
+        </View>
+      </View>
+
+      {/* Organization documents */}
+      <View style={styles.sectionBlock}>
+        <Text style={styles.sectionBlockTitle}>Organization documents</Text>
+        <View style={styles.whiteCardPadded}>
+          <View style={styles.docRow}>
+            <Text style={styles.docName}>Constitution & by-laws</Text>
+            <Text style={styles.docSize}>PDF · 1.2 MB</Text>
+          </View>
+          <View style={styles.docDivider} />
+          <View style={styles.docRow}>
+            <Text style={styles.docName}>Membership handbook</Text>
+            <Text style={styles.docSize}>PDF · 840 KB</Text>
+          </View>
+        </View>
+      </View>
+
+      {/* Leave Organization */}
+      <View style={styles.leaveBlock}>
+        <TouchableOpacity onPress={onLeave} activeOpacity={0.7}>
+          <Text style={styles.leaveText}>Leave Organization</Text>
+        </TouchableOpacity>
+        <Text style={styles.leaveHint}>You can apply again in a future membership period.</Text>
+      </View>
+    </View>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════
+// MODAL 1: ORGANIZATION DETAILS (Image 5)
+// ══════════════════════════════════════════════════════════════════
 
 function OrgDetailsModal({
   org,
-  isMember,
   onClose,
   onJoin,
 }: {
-  org: Organization;
-  isMember: boolean;
+  org: any;
   onClose: () => void;
   onJoin: () => void;
 }) {
   const insets = useSafeAreaInsets();
 
   return (
-    <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <Modal visible animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
       <View style={styles.modalRoot}>
-        <View style={[styles.modalTopBar, { paddingTop: Math.max(insets.top, 16) }]}>
-          <TouchableOpacity onPress={onClose} style={styles.modalBackButton}>
-            <Ionicons name="arrow-back" size={22} color={colors.textPrimary} />
+        {/* Top Header */}
+        <View style={[styles.topBar, { paddingTop: Math.max(insets.top, 16) + 4 }]}>
+          <TouchableOpacity onPress={onClose} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={22} color="#0F172A" />
           </TouchableOpacity>
-          <Text style={styles.modalTopBarTitle}>Organization</Text>
+          <Text style={styles.topBarTitle}>Organization</Text>
           <View style={{ width: 40 }} />
         </View>
 
-        <ScrollView contentContainerStyle={styles.modalScrollContent} showsVerticalScrollIndicator={false}>
-          {/* Header */}
-          <View style={styles.detailsHero}>
-            <View style={styles.detailsLogoBadge}>
-              <Ionicons name="logo-microsoft" size={32} color={colors.primary} />
+        <ScrollView
+          style={styles.scrollArea}
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: Math.max(insets.bottom, 20) + 30 },
+          ]}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Hero Branding */}
+          <View style={styles.detailsHeroWrap}>
+            <Image source={getOrgLogo(org.name)} style={styles.detailsBigAvatar} resizeMode="cover" />
+            <View style={styles.categoryBadgePill}>
+              <Text style={styles.categoryBadgePillText}>TECHNOLOGY</Text>
             </View>
-            <View style={styles.tagPill}>
-              <Text style={styles.tagPillText}>{org.category ?? 'TECHNOLOGY'}</Text>
-            </View>
-            <Text style={styles.detailsSubtext}>196 members • QCU</Text>
-            <Text style={styles.detailsTitle}>{org.name}</Text>
+            <Text style={styles.detailsMemberCount}>186 members · QCU</Text>
+            <Text style={styles.detailsHeroTitle}>{org.name}</Text>
             <Text style={styles.detailsMotto}>Learn together. Build with purpose.</Text>
-            <Text style={styles.detailsBio}>{org.description}</Text>
-          </View>
-
-          {/* Meet Leadership */}
-          <View style={styles.modalCardBlock}>
-            <Text style={styles.blockTitle}>Meet the leadership</Text>
-            <View style={styles.leadershipItem}>
-              <Text style={styles.leaderRole}>Faculty adviser</Text>
-              <Text style={styles.leaderName}>Ms. Joan F. Lover, MAE, LPT</Text>
-            </View>
-            <View style={[styles.leadershipItem, { marginTop: spacing.sm }]}>
-              <Text style={styles.leaderRole}>President</Text>
-              <Text style={styles.leaderName}>Andrea Cruz</Text>
-            </View>
-          </View>
-
-          {/* Our Purpose */}
-          <View style={styles.modalCardBlock}>
-            <Text style={styles.blockTitle}>Our purpose</Text>
-            <Text style={styles.purposeLabel}>MISSION</Text>
-            <Text style={styles.purposeText}>
-              Empower students with practical digital skills, collaborative learning, and opportunities to create meaningful technology.
-            </Text>
-            <Text style={[styles.purposeLabel, { marginTop: spacing.md }]}>VISION</Text>
-            <Text style={styles.purposeText}>
-              An inclusive community of student innovators building solutions that make a positive impact.
+            <Text style={styles.detailsBioText}>
+              A student-led community that helps QCU learners explore Microsoft technologies through workshops, peer mentoring, and real-world projects.
             </Text>
           </View>
 
-          {/* Before You Apply */}
-          <View style={styles.modalCardBlock}>
-            <Text style={styles.blockTitle}>Before you apply</Text>
-            <CheckRow text="Currently enrolled at Quezon City University" />
-            <CheckRow text="Open to all programs and year levels" />
-            <CheckRow text="Valid student ID or proof of enrollment" />
-            <CheckRow text="Completed membership application form" />
+          {/* Meet the leadership */}
+          <View style={styles.sectionBlock}>
+            <Text style={styles.sectionBlockTitle}>Meet the leadership</Text>
+            <View style={styles.whiteCardPadded}>
+              <Text style={styles.roleLabel}>Faculty adviser</Text>
+              <Text style={styles.leaderNameBold}>Ms. Joan F. Lawan, MAIE, LPT</Text>
+              <Text style={[styles.roleLabel, { marginTop: 12 }]}>President</Text>
+              <Text style={styles.leaderNameBold}>Andrea Cruz</Text>
+            </View>
+          </View>
 
-            <View style={styles.noticeBox}>
-              <Text style={styles.noticeTitle}>Applications close November 30, 2026</Text>
-              <Text style={styles.noticeSub}>No membership fee required.</Text>
+          {/* Our purpose */}
+          <View style={styles.sectionBlock}>
+            <Text style={styles.sectionBlockTitle}>Our purpose</Text>
+            <View style={styles.whiteCardPadded}>
+              <Text style={styles.purposeHead}>MISSION</Text>
+              <Text style={styles.purposeBody}>
+                Empower students with practical digital skills, collaborative learning, and opportunities to create meaningful technology.
+              </Text>
+              <Text style={[styles.purposeHead, { marginTop: 14 }]}>VISION</Text>
+              <Text style={styles.purposeBody}>
+                An inclusive community of student innovators building solutions that make a positive impact.
+              </Text>
+            </View>
+          </View>
+
+          {/* Before you apply */}
+          <View style={styles.sectionBlock}>
+            <Text style={styles.sectionBlockTitle}>Before you apply</Text>
+            <View style={styles.whiteCardPadded}>
+              <RequirementLine text="Currently enrolled at Quezon City University" />
+              <RequirementLine text="Open to all programs and year levels" />
+              <RequirementLine text="Valid student ID or proof of enrollment" />
+              <RequirementLine text="Completed membership application form" />
+
+              <View style={styles.appDeadlineNoticeBox}>
+                <Text style={styles.appDeadlineNoticeTitle}>Applications close November 30, 2026</Text>
+                <Text style={styles.appDeadlineNoticeSub}>No membership fee required.</Text>
+              </View>
             </View>
           </View>
 
           {/* Learn by doing */}
-          <View style={styles.modalCardBlock}>
-            <Text style={styles.blockTitle}>Learn by doing</Text>
-            <View style={styles.activityCard}>
+          <View style={styles.sectionBlock}>
+            <Text style={styles.sectionBlockTitle}>Learn by doing</Text>
+            <View style={[styles.whiteCardPadded, { flexDirection: 'row', alignItems: 'center' }]}>
               <View style={styles.activityDateBox}>
-                <Text style={styles.activityMonth}>NOV</Text>
-                <Text style={styles.activityDay}>04</Text>
+                <Text style={styles.activityDateMonth}>DEC</Text>
+                <Text style={styles.activityDateDay}>04</Text>
               </View>
-              <View style={styles.activityInfo}>
+              <View style={{ flex: 1, marginLeft: 14 }}>
                 <Text style={styles.activityTitle}>Intro to Microsoft Azure</Text>
-                <Text style={styles.activityMeta}>Dec 4 • 2:00 PM • Microsoft Hub</Text>
-                <Text style={styles.activityTag}>Workshops • Mentoring • Community projects</Text>
+                <Text style={styles.activityMeta}>Dec 4 · 2:00 PM · Innovation Hub</Text>
+                <Text style={styles.activityTag}>Workshops · Mentoring · Community projects</Text>
               </View>
             </View>
           </View>
 
           {/* Let's connect */}
-          <View style={styles.modalCardBlock}>
-            <Text style={styles.blockTitle}>Let's connect</Text>
-            <Text style={styles.connectLink}>msc@qcu.edu.ph</Text>
-            <Text style={styles.connectSub}>Facebook: Microsoft Student Community QCU</Text>
-            <Text style={styles.connectSub}>Student Organizations Office • QCU San Bartolome</Text>
+          <View style={styles.sectionBlock}>
+            <Text style={styles.sectionBlockTitle}>Let's connect</Text>
+            <View style={styles.whiteCardPadded}>
+              <Text style={styles.emailConnectLink}>msc@qcu.edu.ph</Text>
+              <Text style={styles.connectMeta}>Facebook · Microsoft Student Community QCU</Text>
+              <Text style={styles.connectMeta}>Student Organization Office · QCU San Bartolome</Text>
+            </View>
           </View>
-        </ScrollView>
 
-        {/* Sticky Bottom Action */}
-        <View style={[styles.modalBottomBar, { paddingBottom: Math.max(insets.bottom, 20) + 12 }]}>
-          <TouchableOpacity
-            style={[styles.primaryButton, isMember && styles.buttonDisabled]}
-            onPress={onJoin}
-            disabled={isMember}
-            activeOpacity={0.85}
-          >
-            <Text style={styles.primaryButtonText}>
-              {isMember ? 'Already a member' : 'Join Organization'}
-            </Text>
+          {/* Bottom Button */}
+          <TouchableOpacity style={styles.primarySolidBtn} onPress={onJoin} activeOpacity={0.85}>
+            <Text style={styles.primarySolidBtnText}>Join Organization</Text>
           </TouchableOpacity>
-          <Text style={styles.modalBottomHint}>Submit a membership form to get started.</Text>
-        </View>
+          <Text style={styles.underBtnHint}>Submit a membership form to get started.</Text>
+        </ScrollView>
       </View>
     </Modal>
   );
 }
 
-function CheckRow({ text }: { text: string }) {
+function RequirementLine({ text }: { text: string }) {
   return (
-    <View style={checkStyles.row}>
-      <Ionicons name="checkmark-circle" size={17} color={colors.status.successText} style={{ marginRight: 8 }} />
-      <Text style={checkStyles.text}>{text}</Text>
+    <View style={styles.reqLineRow}>
+      <Ionicons name="checkmark" size={16} color="#1D4ED8" style={{ marginRight: 8, marginTop: 1 }} />
+      <Text style={styles.reqLineText}>{text}</Text>
     </View>
   );
 }
 
-const checkStyles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: spacing.xs,
-  },
-  text: {
-    fontSize: typography.sizes.xs,
-    color: colors.textSecondary,
-    flex: 1,
-  },
-});
-
-// ============================================================================
-// MODAL: MEMBERSHIP APPLICATION FORM
-// ============================================================================
+// ══════════════════════════════════════════════════════════════════
+// MODAL 2: MEMBERSHIP APPLICATION FORM (Image 3)
+// ══════════════════════════════════════════════════════════════════
 
 function MembershipApplicationModal({
   org,
   user,
-  step,
-  setStep,
-  reason,
-  setReason,
-  selectedInterests,
-  toggleInterest,
-  agreedToTerms,
-  setAgreedToTerms,
-  isSubmitting,
   onClose,
-  onSubmit,
+  onSubmitted,
 }: {
-  org: Organization;
+  org: any;
   user: any;
-  step: number;
-  setStep: (s: number) => void;
-  reason: string;
-  setReason: (r: string) => void;
-  selectedInterests: string[];
-  toggleInterest: (t: string) => void;
-  agreedToTerms: boolean;
-  setAgreedToTerms: (a: boolean) => void;
-  isSubmitting: boolean;
   onClose: () => void;
-  onSubmit: () => void;
+  onSubmitted: () => void;
 }) {
   const insets = useSafeAreaInsets();
-  const interestOptions = ['Cloud computing', 'Web development', 'Mobile development', 'AI / ML', 'UI/UX Design'];
+
+  const [fullName, setFullName] = useState(
+    user?.firstName && user?.lastName ? `${user.firstName} ${user.lastName}` : 'Samantha Dela Cruz'
+  );
+  const [studentNumber, setStudentNumber] = useState(user?.studentNumber ?? '2024-10482');
+  const [schoolEmail, setSchoolEmail] = useState(user?.email ?? 'samantha.delacruz@qcu.edu.ph');
+  const [program, setProgram] = useState(user?.program ?? 'BSIT');
+  const [yearLevel, setYearLevel] = useState(user?.yearLevel ?? '3rd year');
+
+  const [reason, setReason] = useState(
+    'I want to build my cloud skills, learn with other students, and contribute to community projects.'
+  );
+  const [interests, setInterests] = useState(['Cloud computing', 'Web development']);
+  const [agreed, setAgreed] = useState(true);
+
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleConfirmSubmit = () => {
+    setIsSubmitting(true);
+    setTimeout(() => {
+      setIsSubmitting(false);
+      setShowConfirm(false);
+      Alert.alert(
+        'Application Submitted',
+        'Your membership form has been submitted for review. Track progress in My Applications.'
+      );
+      onSubmitted();
+    }, 600);
+  };
 
   return (
-    <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <Modal visible animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
       <View style={styles.modalRoot}>
-        <View style={[styles.modalTopBar, { paddingTop: Math.max(insets.top, 16) }]}>
-          <TouchableOpacity onPress={onClose} style={styles.modalBackButton}>
-            <Ionicons name="arrow-back" size={22} color={colors.textPrimary} />
+        {/* Top Header */}
+        <View style={[styles.topBar, { paddingTop: Math.max(insets.top, 16) + 4 }]}>
+          <TouchableOpacity onPress={onClose} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={22} color="#0F172A" />
           </TouchableOpacity>
-          <Text style={styles.modalTopBarTitle}>Membership application</Text>
+          <Text style={styles.topBarTitle}>Membership application</Text>
           <View style={{ width: 40 }} />
         </View>
 
-        <ScrollView contentContainerStyle={styles.modalScrollContent} showsVerticalScrollIndicator={false}>
-          <Text style={styles.applyTitle}>Make it official.</Text>
-          <Text style={styles.applySubtitle}>
-            Apply to {org.name}. Tell us a little about yourself. Fields marked * are required.
+        <ScrollView
+          style={styles.scrollArea}
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: Math.max(insets.bottom, 20) + 30 },
+          ]}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          {/* Header */}
+          <Text style={styles.applyHeaderTitle}>Make it official.</Text>
+          <Text style={styles.applyHeaderOrg}>Apply to {org.name}</Text>
+          <Text style={styles.applyHeaderCaption}>
+            Tell us a little about yourself. Fields marked * are required.
           </Text>
 
-          {/* Stepper Indicator */}
-          <View style={styles.stepperContainer}>
-            <Text style={styles.stepperText}>1. Your details • 2. Tell us more • 3. Membership</Text>
+          {/* Stepper Banner */}
+          <View style={styles.stepperBanner}>
+            <Text style={styles.stepperText}>
+              1 Your details  <Ionicons name="arrow-forward" size={11} color="#2563EB" />  2 Officer review  <Ionicons name="arrow-forward" size={11} color="#2563EB" />  3 Membership
+            </Text>
           </View>
 
-          {/* Pre-filled Student Profile */}
-          <View style={styles.modalCardBlock}>
-            <Text style={styles.formSectionTitle}>Student information</Text>
-            <Text style={styles.formSectionSub}>Pre-filled from your student profile</Text>
+          {/* Card 1: Student information */}
+          <View style={styles.formCard}>
+            <Text style={styles.formCardTitle}>Student information</Text>
+            <Text style={styles.formCardSub}>Pre-filled from your student profile</Text>
 
-            <View style={styles.fieldGroup}>
-              <Text style={styles.inputLabel}>Full name *</Text>
+            <View style={styles.inputFieldWrap}>
+              <Text style={styles.fieldLabel}>Full name *</Text>
               <TextInput
-                style={styles.disabledInput}
-                editable={false}
-                value={`${user?.firstName ?? 'Samantha'} ${user?.lastName ?? 'Dela Cruz'}`}
+                style={styles.formInput}
+                value={fullName}
+                onChangeText={setFullName}
               />
             </View>
 
-            <View style={styles.fieldGroup}>
-              <Text style={styles.inputLabel}>Student number *</Text>
+            <View style={styles.inputFieldWrap}>
+              <Text style={styles.fieldLabel}>Student number *</Text>
               <TextInput
-                style={styles.disabledInput}
-                editable={false}
-                value={user?.studentNumber ?? '2024-10402'}
+                style={styles.formInput}
+                value={studentNumber}
+                onChangeText={setStudentNumber}
               />
             </View>
 
-            <View style={styles.fieldGroup}>
-              <Text style={styles.inputLabel}>School email *</Text>
+            <View style={styles.inputFieldWrap}>
+              <Text style={styles.fieldLabel}>School email *</Text>
               <TextInput
-                style={styles.disabledInput}
-                editable={false}
-                value={user?.email ?? 'samantha.delacruz@qcu.edu.ph'}
+                style={styles.formInput}
+                value={schoolEmail}
+                onChangeText={setSchoolEmail}
+                keyboardType="email-address"
               />
             </View>
 
-            <View style={styles.rowTwoCols}>
-              <View style={[styles.fieldGroup, { flex: 1, marginRight: spacing.sm }]}>
-                <Text style={styles.inputLabel}>Program *</Text>
-                <TextInput
-                  style={styles.disabledInput}
-                  editable={false}
-                  value={user?.program ?? 'BSIT'}
-                />
+            {/* Row: Program & Year Level */}
+            <View style={styles.row}>
+              <View style={[styles.inputFieldWrap, { flex: 1, marginRight: 10 }]}>
+                <Text style={styles.fieldLabel}>Program *</Text>
+                <View style={styles.dropdownInput}>
+                  <Text style={styles.dropdownInputText}>{program}</Text>
+                  <Ionicons name="chevron-down" size={16} color="#64748B" />
+                </View>
               </View>
-              <View style={[styles.fieldGroup, { flex: 1 }]}>
-                <Text style={styles.inputLabel}>Year level *</Text>
-                <TextInput
-                  style={styles.disabledInput}
-                  editable={false}
-                  value={user?.yearLevel ?? '3rd year'}
-                />
+
+              <View style={[styles.inputFieldWrap, { flex: 1 }]}>
+                <Text style={styles.fieldLabel}>Year level *</Text>
+                <View style={styles.dropdownInput}>
+                  <Text style={styles.dropdownInputText}>{yearLevel}</Text>
+                  <Ionicons name="chevron-down" size={16} color="#64748B" />
+                </View>
               </View>
             </View>
           </View>
 
-          {/* A little about you */}
-          <View style={styles.modalCardBlock}>
-            <Text style={styles.formSectionTitle}>A little about you</Text>
+          {/* Card 2: A little about you */}
+          <View style={styles.formCard}>
+            <Text style={styles.formCardTitle}>A little about you</Text>
 
-            <View style={styles.fieldGroup}>
-              <Text style={styles.inputLabel}>Why would you like to join? *</Text>
+            <View style={styles.inputFieldWrap}>
+              <Text style={styles.fieldLabel}>Why would you like to join? *</Text>
               <TextInput
-                style={styles.textAreaInput}
-                multiline
-                numberOfLines={3}
-                placeholder="I want to build my cloud skills, work with other students, and contribute to community projects."
-                placeholderTextColor={colors.textMuted}
+                style={[styles.formInput, styles.formInputArea]}
                 value={reason}
                 onChangeText={setReason}
+                multiline
+                numberOfLines={3}
               />
             </View>
 
-            <Text style={styles.inputLabel}>Areas of interest</Text>
-            <View style={styles.interestWrap}>
-              {interestOptions.map((item) => (
-                <TouchableOpacity
-                  key={item}
-                  style={[
-                    styles.interestChip,
-                    selectedInterests.includes(item) && styles.interestChipActive,
-                  ]}
-                  onPress={() => toggleInterest(item)}
-                >
-                  <Text
-                    style={[
-                      styles.interestChipText,
-                      selectedInterests.includes(item) && styles.interestChipTextActive,
-                    ]}
-                  >
-                    {item}
-                  </Text>
-                </TouchableOpacity>
+            <Text style={styles.fieldLabel}>Areas of interest</Text>
+            <View style={styles.interestsRow}>
+              {['Cloud computing', 'Web development'].map((interest) => (
+                <View key={interest} style={styles.interestPill}>
+                  <Text style={styles.interestPillText}>{interest}</Text>
+                </View>
               ))}
             </View>
           </View>
 
-          {/* Proof of Enrollment */}
-          <View style={styles.modalCardBlock}>
-            <Text style={styles.formSectionTitle}>Proof of enrollment *</Text>
-            <View style={styles.uploadCard}>
-              <View style={styles.uploadLeft}>
-                <Ionicons name="document-attach" size={20} color={colors.primary} />
-                <View style={{ marginLeft: spacing.sm }}>
-                  <Text style={styles.uploadedFileName}>Proof_of_enrollment.pdf</Text>
-                  <Text style={styles.uploadedFileSize}>248 KB • Uploaded successfully</Text>
-                </View>
+          {/* Card 3: Proof of enrollment */}
+          <View style={styles.formCard}>
+            <Text style={styles.formCardTitle}>Proof of enrollment *</Text>
+
+            <View style={styles.uploadBox}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.uploadFileName}>Proof_of_enrollment.pdf</Text>
+                <Text style={styles.uploadFileSize}>248 KB · Uploaded successfully</Text>
               </View>
-              <TouchableOpacity style={styles.replaceBtn}>
-                <Text style={styles.replaceBtnText}>Replace</Text>
+              <TouchableOpacity>
+                <Text style={styles.replaceLink}>Replace</Text>
               </TouchableOpacity>
             </View>
-            <Text style={styles.uploadHint}>Student ID or enrollment form • PDF, JPG, PNG • Max 5 MB</Text>
+            <Text style={styles.uploadHint}>Student ID or enrollment form · PDF, JPG, PNG · Max 5 MB</Text>
           </View>
 
-          {/* Checkbox agreement */}
+          {/* Checkbox Agreement */}
           <TouchableOpacity
-            style={styles.agreementRow}
-            onPress={() => setAgreedToTerms(!agreedToTerms)}
+            style={styles.checkboxRow}
             activeOpacity={0.8}
+            onPress={() => setAgreed(!agreed)}
           >
-            <View style={[styles.checkbox, agreedToTerms && styles.checkboxActive]}>
-              {agreedToTerms && <Ionicons name="checkmark" size={14} color="#FFF" />}
+            <View style={[styles.checkbox, agreed && styles.checkboxActive]}>
+              {agreed && <Ionicons name="checkmark" size={14} color="#FFFFFF" />}
             </View>
-            <Text style={styles.agreementText}>
+            <Text style={styles.checkboxText}>
               I confirm that my information is correct and agree to the organization's guidelines and data privacy policy.
             </Text>
           </TouchableOpacity>
-        </ScrollView>
 
-        {/* Bottom submit */}
-        <View style={[styles.modalBottomBar, { paddingBottom: Math.max(insets.bottom, 20) + 12 }]}>
+          {/* Submit Application Button */}
           <TouchableOpacity
-            style={[styles.primaryButton, (!agreedToTerms || isSubmitting) && styles.buttonDisabled]}
-            disabled={!agreedToTerms || isSubmitting}
-            onPress={onSubmit}
+            style={[styles.primarySolidBtn, (!agreed || isSubmitting) && styles.btnDisabled]}
+            onPress={() => setShowConfirm(true)}
+            disabled={!agreed || isSubmitting}
             activeOpacity={0.85}
           >
-            <Text style={styles.primaryButtonText}>
+            <Text style={styles.primarySolidBtnText}>
               {isSubmitting ? 'Submitting…' : 'Submit application'}
             </Text>
           </TouchableOpacity>
-          <Text style={styles.modalBottomHint}>After submitting, track your status in My Applications.</Text>
-        </View>
+          <Text style={styles.underBtnHint}>After submitting, track your status in My Applications.</Text>
+        </ScrollView>
+
+        {/* Confirmation Modal */}
+        <ConfirmModal
+          visible={showConfirm}
+          title="Submit membership application?"
+          message={`Are you sure you want to submit your membership application to ${org.name}? Your application will be reviewed by the student officers.`}
+          icon="shield-checkmark-outline"
+          iconColor="#1D4ED8"
+          iconBg="#EEF2FF"
+          confirmLabel="Submit application"
+          confirmVariant="primary"
+          cancelLabel="Keep editing"
+          loading={isSubmitting}
+          onConfirm={handleConfirmSubmit}
+          onCancel={() => setShowConfirm(false)}
+        />
       </View>
     </Modal>
   );
 }
 
-// ============================================================================
+// ══════════════════════════════════════════════════════════════════
 // STYLES
-// ============================================================================
+// ══════════════════════════════════════════════════════════════════
 
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: '#F5F8FC',
   },
+  modalRoot: {
+    flex: 1,
+    backgroundColor: '#F5F8FC',
+  },
+
+  /* Top Navigation */
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.sm,
-    backgroundColor: colors.background,
+    paddingHorizontal: 16,
+    paddingBottom: 10,
+    backgroundColor: '#F5F8FC',
   },
   backButton: {
     width: 40,
@@ -1135,967 +1093,930 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  backButtonPlaceholder: {
-    width: 40,
   },
   topBarTitle: {
-    fontSize: typography.sizes.md,
-    fontWeight: typography.weights.bold,
-    color: colors.textPrimary,
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#0F172A',
   },
+
+  /* Segmented Tab Controls */
   tabsContainer: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.sm,
+    paddingHorizontal: 16,
+    paddingBottom: 8,
   },
   segmentedPill: {
     flexDirection: 'row',
-    backgroundColor: '#E2E8F0',
-    borderRadius: radius.full,
-    padding: 3,
+    backgroundColor: 'transparent',
+    gap: 8,
   },
   tabSegment: {
     flex: 1,
-    paddingVertical: 7,
+    paddingVertical: 9,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: radius.full,
+    borderRadius: 10,
+    backgroundColor: 'transparent',
   },
   tabSegmentActive: {
-    backgroundColor: colors.surface,
-    ...shadows.card,
+    backgroundColor: '#E0EBFF',
   },
   tabSegmentText: {
-    fontSize: 11,
-    fontWeight: typography.weights.medium,
-    color: colors.textSecondary,
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#64748B',
   },
   tabSegmentTextActive: {
-    color: colors.primary,
-    fontWeight: typography.weights.bold,
+    color: '#2563EB',
+    fontWeight: '700',
   },
+
   scrollArea: {
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
+    paddingHorizontal: 18,
+    paddingTop: 12,
   },
-  sectionHeader: {
-    marginBottom: spacing.lg,
+
+  /* Headings */
+  sectionHeadingWrap: {
+    marginBottom: 16,
   },
-  heroHeading: {
-    fontSize: typography.sizes.lg,
-    fontWeight: typography.weights.bold,
-    color: colors.textPrimary,
-    letterSpacing: -0.2,
-  },
-  heroSubheading: {
-    fontSize: typography.sizes.xs,
-    color: colors.textSecondary,
-    marginTop: 2,
-    lineHeight: 18,
-  },
-  // My Org
-  orgHeroCard: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.xl,
-    padding: spacing.xl,
-    borderWidth: 1,
-    borderColor: colors.border,
-    marginBottom: spacing.lg,
-    ...shadows.card,
-  },
-  orgHeroTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.md,
-  },
-  orgLogoCircle: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    borderWidth: 2,
-    borderColor: '#059669',
-    backgroundColor: '#ECFDF5',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  activeMemberBadge: {
-    backgroundColor: '#DCFCE7',
-    paddingHorizontal: spacing.md,
-    paddingVertical: 4,
-    borderRadius: radius.full,
-  },
-  activeMemberText: {
-    fontSize: 10,
-    fontWeight: typography.weights.bold,
-    color: '#15803D',
-    letterSpacing: 0.5,
-  },
-  orgHeroTitle: {
-    fontSize: typography.sizes.md,
-    fontWeight: typography.weights.bold,
-    color: colors.textPrimary,
-    lineHeight: 22,
-    marginBottom: spacing.xs,
-  },
-  orgHeroDescription: {
-    fontSize: typography.sizes.xs,
-    color: colors.textSecondary,
-    lineHeight: 18,
-    marginBottom: spacing.md,
-  },
-  orgHeroFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  memberPill: {
-    backgroundColor: '#F1F5F9',
-    paddingHorizontal: spacing.md,
-    paddingVertical: 4,
-    borderRadius: radius.full,
-  },
-  memberPillText: {
-    fontSize: 11,
-    color: colors.textPrimary,
-    fontWeight: typography.weights.medium,
-  },
-  memberSinceText: {
-    fontSize: 11,
-    color: colors.textMuted,
-  },
-  blockContainer: {
-    marginBottom: spacing.lg,
-  },
-  blockHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.xs,
-  },
-  blockTitle: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.bold,
-    color: colors.textPrimary,
-    marginBottom: spacing.xs,
-  },
-  linkAction: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.semibold,
-    color: colors.accent,
-  },
-  leadershipCard: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    padding: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  leadershipItem: {
-    paddingVertical: 4,
-  },
-  leaderName: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.bold,
-    color: colors.textPrimary,
-  },
-  leaderRole: {
-    fontSize: typography.sizes.xs,
-    color: colors.textSecondary,
-  },
-  leaderDivider: {
-    height: 1,
-    backgroundColor: colors.border,
-    marginVertical: spacing.xs,
-  },
-  announcementCard: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    padding: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  announcementHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginBottom: 6,
-  },
-  pinnedPill: {
-    backgroundColor: colors.accentMuted,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-    borderRadius: radius.full,
-  },
-  pinnedPillText: {
-    fontSize: 10,
-    fontWeight: typography.weights.bold,
-    color: colors.accent,
-  },
-  announcementDate: {
-    fontSize: 11,
-    color: colors.textMuted,
-  },
-  announcementHeadline: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.bold,
-    color: colors.textPrimary,
+  mainTitle: {
+    fontSize: 26,
+    fontWeight: '800',
+    color: '#0F172A',
     marginBottom: 4,
+    letterSpacing: -0.3,
   },
-  announcementBody: {
-    fontSize: typography.sizes.xs,
-    color: colors.textSecondary,
-    lineHeight: 18,
+  mainSubtitle: {
+    fontSize: 14,
+    color: '#64748B',
   },
-  activityCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    padding: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    gap: spacing.md,
-  },
-  activityDateBox: {
-    backgroundColor: colors.accentMuted,
-    borderRadius: radius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 8,
-    minWidth: 48,
-  },
-  activityMonth: {
-    fontSize: 10,
-    fontWeight: typography.weights.bold,
-    color: colors.accent,
-  },
-  activityDay: {
-    fontSize: typography.sizes.lg,
-    fontWeight: typography.weights.bold,
-    color: colors.textPrimary,
-  },
-  activityInfo: {
-    flex: 1,
-  },
-  activityTitle: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.bold,
-    color: colors.textPrimary,
-    marginBottom: 2,
-  },
-  activityMeta: {
-    fontSize: typography.sizes.xs,
-    color: colors.textSecondary,
-  },
-  activityTag: {
-    fontSize: 11,
-    color: colors.accent,
-    fontWeight: typography.weights.medium,
-    marginTop: 2,
-  },
-  documentsCard: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    padding: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  documentRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 6,
-  },
-  docIconBox: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#EFF6FF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: spacing.sm,
-  },
-  docTextGroup: {
-    flex: 1,
-  },
-  docTitle: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.semibold,
-    color: colors.textPrimary,
-  },
-  docMeta: {
-    fontSize: 10,
-    color: colors.textMuted,
-  },
-  leaveContainer: {
-    alignItems: 'center',
-    marginTop: spacing.sm,
-    marginBottom: spacing.xl,
-  },
-  leaveButton: {
-    paddingVertical: spacing.xs,
-  },
-  leaveButtonText: {
-    fontSize: typography.sizes.xs,
-    color: '#DC2626',
-    fontWeight: typography.weights.semibold,
-  },
-  leaveHint: {
-    fontSize: 11,
-    color: colors.textMuted,
-    textAlign: 'center',
-    marginTop: 2,
-  },
-  // Join Tab
+
+  /* Search Bar */
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    height: 46,
+    paddingHorizontal: 14,
     borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: spacing.md,
-    height: 44,
-    marginBottom: spacing.md,
+    borderColor: '#E2E8F0',
+    marginBottom: 14,
   },
   searchInput: {
     flex: 1,
-    fontSize: typography.sizes.sm,
-    color: colors.textPrimary,
+    fontSize: 14,
+    color: '#0F172A',
   },
+
+  /* Category Pills */
   pillsScroll: {
-    marginBottom: spacing.lg,
+    flexDirection: 'row',
+    marginBottom: 20,
   },
   categoryPill: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: 6,
-    borderRadius: radius.full,
-    backgroundColor: colors.surface,
+    paddingHorizontal: 16,
+    paddingVertical: 7,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    marginRight: 8,
     borderWidth: 1,
-    borderColor: colors.border,
-    marginRight: spacing.sm,
+    borderColor: '#E2E8F0',
   },
   categoryPillActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
+    backgroundColor: '#2563EB',
+    borderColor: '#2563EB',
   },
   categoryPillText: {
-    fontSize: 11,
-    fontWeight: typography.weights.medium,
-    color: colors.textSecondary,
+    fontSize: 13,
+    color: '#475569',
+    fontWeight: '500',
   },
   categoryPillTextActive: {
-    color: colors.textInverse,
-    fontWeight: typography.weights.bold,
+    color: '#FFFFFF',
+    fontWeight: '600',
   },
+
+  /* Open for membership section */
   orgsHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: spacing.md,
+    marginBottom: 12,
   },
   openTitle: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.bold,
-    color: colors.textPrimary,
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0F172A',
   },
   openCount: {
-    fontSize: 11,
-    color: colors.textMuted,
+    fontSize: 13,
+    color: '#64748B',
   },
-  joinOrgCard: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.xl,
-    padding: spacing.lg,
+
+  /* Org Card */
+  orgCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
     borderWidth: 1,
-    borderColor: colors.border,
-    marginBottom: spacing.md,
-    ...shadows.card,
+    borderColor: '#E2E8F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
   },
-  joinOrgTop: {
+  orgCardTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: spacing.xs,
+    marginBottom: 10,
   },
-  joinOrgLogo: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#EFF6FF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: spacing.md,
+  orgAvatarImg: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    marginRight: 12,
   },
-  joinOrgHeaderRight: {
+  orgCardTitleCol: {
     flex: 1,
   },
-  joinOrgName: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.bold,
-    color: colors.textPrimary,
+  orgCardTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0F172A',
+    lineHeight: 20,
   },
-  tagPill: {
-    alignSelf: 'flex-start',
-    backgroundColor: colors.accentMuted,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-    borderRadius: radius.full,
+  orgCategoryText: {
+    fontSize: 12,
+    color: '#2563EB',
     marginTop: 2,
+    fontWeight: '500',
   },
-  tagPillText: {
-    fontSize: 10,
-    fontWeight: typography.weights.bold,
-    color: colors.primary,
-    textTransform: 'uppercase',
-  },
-  joinOrgBio: {
-    fontSize: typography.sizes.xs,
-    color: colors.textSecondary,
+  orgBioText: {
+    fontSize: 13,
+    color: '#475569',
     lineHeight: 18,
-    marginVertical: spacing.xs,
+    marginBottom: 12,
   },
-  joinOrgLeaders: {
-    fontSize: 11,
-    color: colors.textMuted,
-    marginBottom: spacing.xs,
+  leadersBlock: {
+    marginBottom: 8,
   },
-  joinOrgStatsRow: {
-    marginBottom: spacing.md,
+  adviserText: {
+    fontSize: 12,
+    color: '#334155',
+    lineHeight: 18,
   },
-  joinOrgStatsText: {
-    fontSize: 11,
-    color: colors.accent,
-    fontWeight: typography.weights.medium,
+  presidentText: {
+    fontSize: 12,
+    color: '#64748B',
+    lineHeight: 18,
   },
-  joinOrgActions: {
+  statsText: {
+    fontSize: 12,
+    color: '#2563EB',
+    fontWeight: '500',
+    marginBottom: 14,
+  },
+  cardActionsRow: {
     flexDirection: 'row',
-    gap: spacing.sm,
+    gap: 10,
   },
-  viewDetailsButton: {
+  viewDetailsBtn: {
     flex: 1,
-    borderWidth: 1,
-    borderColor: colors.borderDark,
-    borderRadius: radius.md,
-    paddingVertical: 10,
+    height: 42,
+    borderRadius: 10,
+    backgroundColor: '#EDF4FF',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  viewDetailsButtonText: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.semibold,
-    color: colors.textPrimary,
+  viewDetailsBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#2563EB',
   },
-  joinNowButton: {
+  joinOrgBtn: {
     flex: 1,
-    backgroundColor: colors.primary,
-    borderRadius: radius.md,
-    paddingVertical: 10,
+    height: 42,
+    borderRadius: 10,
+    backgroundColor: '#2563EB',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  joinedButton: {
-    backgroundColor: '#059669',
+  joinOrgBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
-  joinNowButtonText: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.bold,
-    color: colors.textInverse,
+
+  /* Next Chapter Banner */
+  nextChapterCard: {
+    backgroundColor: '#EDF4FF',
+    borderRadius: 16,
+    padding: 16,
+    marginTop: 4,
+    marginBottom: 16,
   },
-  guideCard: {
-    backgroundColor: '#EFF6FF',
-    borderRadius: radius.lg,
-    padding: spacing.lg,
-    marginTop: spacing.md,
-    marginBottom: spacing.xl,
-    borderWidth: 1,
-    borderColor: '#BFDBFE',
-  },
-  guideTitle: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.bold,
-    color: colors.primary,
-    marginBottom: 2,
-  },
-  guideSteps: {
-    fontSize: 11,
-    fontWeight: typography.weights.semibold,
-    color: colors.accent,
+  chapterTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0F172A',
     marginBottom: 4,
   },
-  guideDesc: {
-    fontSize: typography.sizes.xs,
-    color: colors.textSecondary,
-    lineHeight: 18,
+  chapterStepsRow: {
+    marginBottom: 6,
   },
-  // My Applications Tab
-  updateBanner: {
-    backgroundColor: '#EFF6FF',
-    borderRadius: radius.lg,
-    padding: spacing.md,
-    borderWidth: 1,
-    borderColor: '#BFDBFE',
-    marginBottom: spacing.md,
+  chapterStepsText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#2563EB',
   },
-  updateTopRow: {
+  chapterDesc: {
+    fontSize: 12,
+    color: '#64748B',
+    lineHeight: 17,
+  },
+
+  /* My Applications Tab */
+  updateCard: {
+    backgroundColor: '#EDF4FF',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 16,
+  },
+  updateCardTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: 4,
   },
-  updateTag: {
+  updateCardTag: {
     fontSize: 10,
-    fontWeight: typography.weights.bold,
-    color: colors.accent,
+    fontWeight: '700',
+    color: '#2563EB',
+    letterSpacing: 0.5,
   },
-  updateTime: {
-    fontSize: 10,
-    color: colors.textMuted,
+  updateCardTime: {
+    fontSize: 11,
+    color: '#64748B',
   },
-  updateTitle: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.medium,
-    color: colors.textPrimary,
+  updateCardHeadline: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0F172A',
+    lineHeight: 18,
   },
   filterPillsRow: {
     flexDirection: 'row',
-    gap: spacing.xs,
-    marginBottom: spacing.md,
+    gap: 8,
+    marginBottom: 16,
   },
   appFilterPill: {
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: 14,
     paddingVertical: 6,
-    borderRadius: radius.full,
-    backgroundColor: colors.surface,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: '#E2E8F0',
   },
   appFilterPillActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
+    backgroundColor: '#2563EB',
+    borderColor: '#2563EB',
   },
   appFilterText: {
-    fontSize: 11,
-    color: colors.textSecondary,
-    fontWeight: typography.weights.medium,
+    fontSize: 12,
+    color: '#64748B',
+    fontWeight: '500',
   },
   appFilterTextActive: {
-    color: colors.textInverse,
-    fontWeight: typography.weights.bold,
+    color: '#FFFFFF',
+    fontWeight: '600',
   },
   appCard: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.xl,
-    padding: spacing.lg,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 14,
     borderWidth: 1,
-    borderColor: colors.border,
-    marginBottom: spacing.md,
-    ...shadows.card,
+    borderColor: '#E2E8F0',
   },
   appCardHeader: {
     flexDirection: 'row',
-    marginBottom: spacing.sm,
-  },
-  appLogoCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#EFF6FF',
     alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: spacing.sm,
+    marginBottom: 8,
   },
-  appHeaderInfo: {
+  appAvatarImg: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    marginRight: 12,
+  },
+  appTitleCol: {
     flex: 1,
   },
   appOrgTitle: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.bold,
-    color: colors.textPrimary,
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0F172A',
+    marginBottom: 2,
   },
   appStatusRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    marginTop: 4,
+    gap: 8,
   },
-  statusChip: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-    borderRadius: radius.full,
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
   },
-  statusPending: {
+  statusBadgePending: {
     backgroundColor: '#FEF3C7',
   },
-  statusApproved: {
+  statusBadgeApproved: {
     backgroundColor: '#DCFCE7',
   },
-  statusRejected: {
+  statusBadgeRejected: {
     backgroundColor: '#FEE2E2',
   },
-  statusChipText: {
-    fontSize: 10,
-    fontWeight: typography.weights.bold,
+  statusBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
   },
-  textPending: {
+  statusBadgeTextPending: {
     color: '#D97706',
   },
-  textApproved: {
+  statusBadgeTextApproved: {
     color: '#15803D',
   },
-  textRejected: {
+  statusBadgeTextRejected: {
     color: '#DC2626',
   },
-  appMetaCode: {
-    fontSize: 10,
-    color: colors.textMuted,
+  statusSubtitleText: {
+    fontSize: 12,
+    color: '#64748B',
+  },
+  appDateMetaText: {
+    fontSize: 12,
+    color: '#64748B',
+    marginBottom: 12,
   },
   decisionBox: {
-    borderRadius: radius.md,
-    padding: spacing.md,
-    marginVertical: spacing.xs,
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 12,
   },
-  boxPending: {
-    backgroundColor: '#FFFBEB',
+  decisionBoxPending: {
+    backgroundColor: '#FEF9EE',
   },
-  boxApproved: {
+  decisionBoxApproved: {
     backgroundColor: '#F0FDF4',
   },
-  boxRejected: {
+  decisionBoxRejected: {
     backgroundColor: '#FEF2F2',
   },
   decisionHeadline: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.bold,
-    marginBottom: 2,
+    fontSize: 13,
+    fontWeight: '700',
+    marginBottom: 3,
+  },
+  decisionHeadlinePending: {
+    color: '#B45309',
+  },
+  decisionHeadlineApproved: {
+    color: '#15803D',
+  },
+  decisionHeadlineRejected: {
+    color: '#B91C1C',
   },
   decisionBody: {
-    fontSize: 11,
-    color: colors.textSecondary,
-    lineHeight: 16,
+    fontSize: 12,
+    color: '#475569',
+    lineHeight: 17,
   },
   appActionRow: {
-    marginTop: spacing.xs,
     alignSelf: 'flex-start',
   },
   appActionText: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.semibold,
-    color: colors.accent,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#2563EB',
   },
-  // Modal Common
-  modalRoot: {
+  notificationPromptText: {
+    fontSize: 12,
+    color: '#94A3B8',
+    textAlign: 'center',
+    marginTop: 8,
+    marginBottom: 16,
+  },
+
+  /* My Organization Tab */
+  myOrgHeroCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 18,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  myOrgHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 10,
+  },
+  myOrgAvatarImg: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    marginRight: 12,
+    marginTop: 2,
+  },
+  myOrgHeaderInfo: {
     flex: 1,
-    backgroundColor: colors.background,
   },
-  modalTopBar: {
+  activePill: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 9,
+    paddingVertical: 3.5,
+    borderRadius: 8,
+    marginBottom: 6,
+  },
+  activePillText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#15803D',
+    letterSpacing: 0.3,
+  },
+  myOrgTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0F172A',
+    lineHeight: 21,
+  },
+  myOrgBio: {
+    fontSize: 13,
+    color: '#64748B',
+    lineHeight: 18,
+    marginBottom: 14,
+  },
+  myOrgStatsPill: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#F5F8FC',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  myOrgMembersText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  myOrgMemberSince: {
+    fontSize: 12,
+    color: '#64748B',
+  },
+  sectionBlock: {
+    marginBottom: 16,
+  },
+  sectionBlockTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0F172A',
+    marginBottom: 10,
+  },
+  whiteCardPadded: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  leaderItem: {},
+  leaderName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  leaderRole: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  rowBetween: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  viewAllLink: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#2563EB',
+  },
+  announcementMetaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.sm,
-    backgroundColor: colors.background,
+    marginBottom: 6,
   },
-  modalBackButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.surface,
+  pinnedBadge: {
+    backgroundColor: '#DBEAFE',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    marginRight: 8,
+  },
+  pinnedBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#1D4ED8',
+  },
+  announcementDateText: {
+    fontSize: 12,
+    color: '#64748B',
+  },
+  announcementHeadline: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0F172A',
+    marginBottom: 4,
+  },
+  announcementBody: {
+    fontSize: 12,
+    color: '#475569',
+    lineHeight: 17,
+  },
+  activityDateBox: {
+    width: 46,
+    height: 48,
+    borderRadius: 10,
+    backgroundColor: '#EDF4FF',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
   },
-  modalTopBarTitle: {
-    fontSize: typography.sizes.md,
-    fontWeight: typography.weights.bold,
-    color: colors.textPrimary,
+  activityDateMonth: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#2563EB',
   },
-  modalScrollContent: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: 40,
+  activityDateDay: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#2563EB',
   },
-  detailsHero: {
+  activityTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  activityMeta: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  activityTag: {
+    fontSize: 11,
+    color: '#2563EB',
+    fontWeight: '500',
+    marginTop: 2,
+  },
+  docRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: spacing.lg,
+    paddingVertical: 4,
   },
-  detailsLogoBadge: {
+  docName: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#0F172A',
+  },
+  docSize: {
+    fontSize: 12,
+    color: '#64748B',
+  },
+  docDivider: {
+    height: 1,
+    backgroundColor: '#F1F5F9',
+    marginVertical: 10,
+  },
+  leaveBlock: {
+    alignItems: 'center',
+    marginTop: 10,
+    marginBottom: 20,
+  },
+  leaveText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#DC2626',
+    marginBottom: 4,
+  },
+  leaveHint: {
+    fontSize: 12,
+    color: '#64748B',
+  },
+
+  /* Organization Details Modal */
+  detailsHeroWrap: {
+    alignItems: 'center',
+    paddingVertical: 16,
+  },
+  detailsBigAvatar: {
     width: 68,
     height: 68,
     borderRadius: 34,
-    backgroundColor: colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
+    marginBottom: 10,
   },
-  detailsSubtext: {
+  categoryBadgePill: {
+    backgroundColor: '#EDF4FF',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginBottom: 6,
+  },
+  categoryBadgePillText: {
     fontSize: 11,
-    color: colors.textMuted,
-    marginTop: 4,
-    marginBottom: spacing.xs,
+    fontWeight: '700',
+    color: '#2563EB',
+    letterSpacing: 0.5,
   },
-  detailsTitle: {
-    fontSize: typography.sizes.lg,
-    fontWeight: typography.weights.bold,
-    color: colors.textPrimary,
+  detailsMemberCount: {
+    fontSize: 12,
+    color: '#64748B',
+    marginBottom: 6,
+  },
+  detailsHeroTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#0F172A',
     textAlign: 'center',
+    marginBottom: 4,
   },
   detailsMotto: {
-    fontSize: typography.sizes.xs,
-    color: colors.accent,
-    fontWeight: typography.weights.semibold,
-    marginTop: 2,
-    marginBottom: spacing.sm,
+    fontSize: 13,
+    color: '#2563EB',
+    fontWeight: '600',
+    marginBottom: 8,
   },
-  detailsBio: {
-    fontSize: typography.sizes.xs,
-    color: colors.textSecondary,
+  detailsBioText: {
+    fontSize: 13,
+    color: '#475569',
     textAlign: 'center',
+    lineHeight: 19,
+    paddingHorizontal: 8,
+  },
+  roleLabel: {
+    fontSize: 11,
+    color: '#94A3B8',
+    fontWeight: '600',
+    textTransform: 'uppercase',
+  },
+  leaderNameBold: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0F172A',
+    marginTop: 2,
+  },
+  purposeHead: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#2563EB',
+    marginBottom: 3,
+  },
+  purposeBody: {
+    fontSize: 13,
+    color: '#475569',
     lineHeight: 18,
-    maxWidth: 320,
   },
-  modalCardBlock: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.xl,
-    padding: spacing.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    marginBottom: spacing.md,
+  reqLineRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 8,
   },
-  purposeLabel: {
-    fontSize: 10,
-    fontWeight: typography.weights.bold,
-    color: colors.accent,
+  reqLineText: {
+    fontSize: 13,
+    color: '#334155',
+    flex: 1,
+    lineHeight: 18,
+  },
+  appDeadlineNoticeBox: {
+    backgroundColor: '#EDF4FF',
+    borderRadius: 10,
+    padding: 12,
+    marginTop: 10,
+  },
+  appDeadlineNoticeTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#1D4ED8',
     marginBottom: 2,
   },
-  purposeText: {
-    fontSize: typography.sizes.xs,
-    color: colors.textSecondary,
-    lineHeight: 18,
+  appDeadlineNoticeSub: {
+    fontSize: 12,
+    color: '#64748B',
   },
-  noticeBox: {
-    backgroundColor: colors.accentMuted,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    marginTop: spacing.md,
-  },
-  noticeTitle: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.bold,
-    color: colors.primary,
-  },
-  noticeSub: {
-    fontSize: 11,
-    color: colors.textSecondary,
-    marginTop: 2,
-  },
-  connectLink: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.semibold,
-    color: colors.accent,
+  emailConnectLink: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#2563EB',
     marginBottom: 4,
   },
-  connectSub: {
-    fontSize: 11,
-    color: colors.textSecondary,
-    marginBottom: 2,
+  connectMeta: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 2,
   },
-  modalBottomBar: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    backgroundColor: colors.surface,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    alignItems: 'center',
-  },
-  primaryButton: {
-    backgroundColor: colors.primary,
-    borderRadius: radius.md,
-    height: 50,
-    width: '100%',
+  primarySolidBtn: {
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: '#2563EB',
     alignItems: 'center',
     justifyContent: 'center',
+    marginTop: 12,
   },
-  buttonDisabled: {
-    opacity: 0.5,
+  primarySolidBtnText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
-  primaryButtonText: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.bold,
-    color: colors.textInverse,
-  },
-  modalBottomHint: {
-    fontSize: 11,
-    color: colors.textMuted,
-    marginTop: 6,
+  underBtnHint: {
+    fontSize: 12,
+    color: '#94A3B8',
     textAlign: 'center',
+    marginTop: 8,
+    marginBottom: 20,
   },
-  // Application Form Modal
-  applyTitle: {
-    fontSize: typography.sizes.xl,
-    fontWeight: typography.weights.bold,
-    color: colors.textPrimary,
-    marginTop: spacing.sm,
-  },
-  applySubtitle: {
-    fontSize: typography.sizes.xs,
-    color: colors.textSecondary,
-    lineHeight: 18,
-    marginTop: 4,
-    marginBottom: spacing.md,
-  },
-  stepperContainer: {
-    backgroundColor: colors.surfaceSubtle,
-    paddingVertical: 6,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.md,
-    marginBottom: spacing.lg,
-  },
-  stepperText: {
-    fontSize: 11,
-    color: colors.accent,
-    fontWeight: typography.weights.semibold,
-  },
-  formSectionTitle: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.bold,
-    color: colors.textPrimary,
-  },
-  formSectionSub: {
-    fontSize: 11,
-    color: colors.textMuted,
-    marginBottom: spacing.md,
-  },
-  fieldGroup: {
-    marginBottom: spacing.md,
-  },
-  inputLabel: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.semibold,
-    color: colors.textPrimary,
+
+  /* Membership Application Form */
+  applyHeaderTitle: {
+    fontSize: 26,
+    fontWeight: '800',
+    color: '#0F172A',
     marginBottom: 4,
   },
-  disabledInput: {
-    backgroundColor: colors.surfaceSubtle,
-    borderRadius: radius.md,
+  applyHeaderOrg: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#2563EB',
+    marginBottom: 6,
+  },
+  applyHeaderCaption: {
+    fontSize: 13,
+    color: '#64748B',
+    marginBottom: 16,
+  },
+  stepperBanner: {
+    backgroundColor: '#EDF4FF',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 18,
+  },
+  stepperText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#2563EB',
+    textAlign: 'center',
+  },
+  formCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
     borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: spacing.md,
+    borderColor: '#E2E8F0',
+  },
+  formCardTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0F172A',
+    marginBottom: 2,
+  },
+  formCardSub: {
+    fontSize: 12,
+    color: '#94A3B8',
+    marginBottom: 14,
+  },
+  inputFieldWrap: {
+    marginBottom: 12,
+  },
+  fieldLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#334155',
+    marginBottom: 6,
+  },
+  formInput: {
     height: 44,
-    fontSize: typography.sizes.xs,
-    color: colors.textPrimary,
-  },
-  rowTwoCols: {
-    flexDirection: 'row',
-  },
-  textAreaInput: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
+    borderRadius: 10,
     borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.md,
+    borderColor: '#E2E8F0',
+    paddingHorizontal: 12,
+    fontSize: 14,
+    color: '#0F172A',
+    backgroundColor: '#FFFFFF',
+  },
+  formInputArea: {
     height: 80,
-    fontSize: typography.sizes.xs,
-    color: colors.textPrimary,
+    paddingTop: 10,
     textAlignVertical: 'top',
   },
-  interestWrap: {
+  row: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.xs,
-    marginTop: 6,
   },
-  interestChip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: 6,
-    borderRadius: radius.full,
-    backgroundColor: colors.surfaceSubtle,
+  dropdownInput: {
+    height: 44,
+    borderRadius: 10,
     borderWidth: 1,
-    borderColor: colors.border,
-  },
-  interestChipActive: {
-    backgroundColor: colors.accentMuted,
-    borderColor: colors.accent,
-  },
-  interestChipText: {
-    fontSize: 11,
-    color: colors.textSecondary,
-  },
-  interestChipTextActive: {
-    color: colors.accent,
-    fontWeight: typography.weights.bold,
-  },
-  uploadCard: {
+    borderColor: '#E2E8F0',
+    paddingHorizontal: 12,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: colors.surfaceSubtle,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    marginTop: spacing.xs,
+    backgroundColor: '#FFFFFF',
   },
-  uploadLeft: {
+  dropdownInputText: {
+    fontSize: 14,
+    color: '#0F172A',
+  },
+  interestsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 4,
+  },
+  interestPill: {
+    backgroundColor: '#EDF4FF',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 8,
+  },
+  interestPillText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#2563EB',
+  },
+  uploadBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    flex: 1,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    marginBottom: 6,
   },
-  uploadedFileName: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.semibold,
-    color: colors.textPrimary,
+  uploadFileName: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#0F172A',
   },
-  uploadedFileSize: {
-    fontSize: 10,
-    color: colors.textMuted,
-  },
-  replaceBtn: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
-  },
-  replaceBtnText: {
+  uploadFileSize: {
     fontSize: 11,
-    color: colors.accent,
-    fontWeight: typography.weights.semibold,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  replaceLink: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#2563EB',
   },
   uploadHint: {
-    fontSize: 10,
-    color: colors.textMuted,
-    marginTop: 6,
+    fontSize: 11,
+    color: '#94A3B8',
   },
-  agreementRow: {
+  checkboxRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    marginBottom: spacing.xl,
-    paddingHorizontal: 4,
+    marginBottom: 20,
+    paddingHorizontal: 2,
   },
   checkbox: {
     width: 20,
     height: 20,
-    borderRadius: 4,
+    borderRadius: 5,
     borderWidth: 1.5,
-    borderColor: colors.borderDark,
+    borderColor: '#CBD5E1',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: spacing.sm,
+    marginRight: 10,
     marginTop: 2,
+    backgroundColor: '#FFFFFF',
   },
   checkboxActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
+    backgroundColor: '#2563EB',
+    borderColor: '#2563EB',
   },
-  agreementText: {
-    fontSize: 11,
-    color: colors.textSecondary,
-    lineHeight: 16,
+  checkboxText: {
     flex: 1,
+    fontSize: 12,
+    color: '#475569',
+    lineHeight: 18,
+  },
+  btnDisabled: {
+    opacity: 0.5,
   },
 });

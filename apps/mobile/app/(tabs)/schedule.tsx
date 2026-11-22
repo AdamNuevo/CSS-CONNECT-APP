@@ -7,40 +7,73 @@ import {
   TouchableOpacity,
   RefreshControl,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
-import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, radius, typography } from '../../src/theme/tokens';
-import { Card } from '../../src/components/ui/Card';
-import { Badge } from '../../src/components/ui/Badge';
-import { Skeleton } from '../../src/components/ui/Skeleton';
-import { EmptyState } from '../../src/components/ui/EmptyState';
 import { mobileApi } from '../../src/services/dashboard';
 import type { EnrichedClassSchedule, DayOfWeek } from '@ccs-hub/shared';
 
-const DAYS: { key: DayOfWeek; label: string; short: string }[] = [
-  { key: 'monday', label: 'Monday', short: 'Mon' },
-  { key: 'tuesday', label: 'Tuesday', short: 'Tue' },
-  { key: 'wednesday', label: 'Wednesday', short: 'Wed' },
-  { key: 'thursday', label: 'Thursday', short: 'Thu' },
-  { key: 'friday', label: 'Friday', short: 'Fri' },
-  { key: 'saturday', label: 'Saturday', short: 'Sat' },
-];
-
-function getInitialDay(): DayOfWeek {
-  const dayIndex = new Date().getDay(); // 0 is Sunday, 1 is Monday...
-  if (dayIndex >= 1 && dayIndex <= 6) {
-    return DAYS[dayIndex - 1].key;
-  }
-  return 'monday';
+interface DayItem {
+  key: DayOfWeek;
+  short: string;
+  dateNum: number;
+  fullDate: string;
 }
 
+const WEEK_DAYS: DayItem[] = [
+  { key: 'monday', short: 'Mon', dateNum: 9, fullDate: 'Monday, Nov 9' },
+  { key: 'tuesday', short: 'Tue', dateNum: 10, fullDate: 'Tuesday, Nov 10' },
+  { key: 'wednesday', short: 'Wed', dateNum: 11, fullDate: 'Wednesday, Nov 11' },
+  { key: 'thursday', short: 'Thu', dateNum: 12, fullDate: 'Thursday, Nov 12' },
+  { key: 'friday', short: 'Fri', dateNum: 13, fullDate: 'Friday, Nov 13' },
+  { key: 'saturday', short: 'Sat', dateNum: 14, fullDate: 'Saturday, Nov 14' },
+];
+
+const DEFAULT_WEDNESDAY_CLASSES = [
+  {
+    id: 's-1',
+    timeHour: '8:00',
+    timePeriod: 'AM',
+    title: 'Web Systems and Technologies',
+    details: 'IT 301 · Rm 304',
+    instructor: 'Prof. Maria Santos',
+    isNext: false,
+  },
+  {
+    id: 's-2',
+    timeHour: '10:00',
+    timePeriod: 'AM',
+    title: 'Information Assurance and Security 1',
+    details: 'IT 302 · Lab 1',
+    instructor: 'Engr. Carlo Mendoza',
+    isNext: false,
+  },
+  {
+    id: 's-3',
+    timeHour: '1:00',
+    timePeriod: 'PM',
+    title: 'Mobile Application Development',
+    details: 'IT 303 · Lab 3',
+    instructor: 'Prof. Paolo Reyes',
+    isNext: true,
+  },
+  {
+    id: 's-4',
+    timeHour: '3:00',
+    timePeriod: 'PM',
+    title: 'Capstone Project 1',
+    details: 'IT 305 · Rm 210',
+    instructor: 'Prof. Ana Villanueva',
+    isNext: false,
+  },
+];
+
 export default function ScheduleScreen() {
-  const [selectedDay, setSelectedDay] = useState<DayOfWeek>(getInitialDay);
+  const insets = useSafeAreaInsets();
+  const [selectedDay, setSelectedDay] = useState<DayOfWeek>('wednesday');
 
   const {
-    data: schedules = [],
-    isLoading,
-    isError,
+    data: apiSchedules = [],
     refetch,
     isRefetching,
   } = useQuery<EnrichedClassSchedule[]>({
@@ -48,113 +81,110 @@ export default function ScheduleScreen() {
     queryFn: mobileApi.getWeeklySchedule,
   });
 
-  const daySchedules = schedules
+  const activeDayItem = WEEK_DAYS.find((d) => d.key === selectedDay) ?? WEEK_DAYS[2];
+
+  // Map API data if present, otherwise use reference data
+  const apiDayClasses = apiSchedules
     .filter((s) => s.day === selectedDay)
-    .sort((a, b) => a.startTime.localeCompare(b.startTime));
+    .sort((a, b) => a.startTime.localeCompare(b.startTime))
+    .map((s, idx) => {
+      const parts = s.startTime.split(' ');
+      return {
+        id: s.id,
+        timeHour: parts[0] || s.startTime,
+        timePeriod: parts[1] || 'AM',
+        title: s.courseTitle,
+        details: `${s.courseCode} · Rm ${s.room}`,
+        instructor: s.facultyName,
+        isNext: idx === 2,
+      };
+    });
+
+  const displayClasses = apiDayClasses.length > 0 ? apiDayClasses : DEFAULT_WEDNESDAY_CLASSES;
 
   return (
-    <View style={styles.container}>
-      {/* Header */}
+    <View style={[styles.container, { paddingTop: Math.max(insets.top, 20) + 12 }]}>
+      {/* ── Top Header ── */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Class Schedule</Text>
-        <Text style={styles.headerSubtitle}>1st Semester AY 2026-2027</Text>
+        <Text style={styles.headerTitle}>Schedule</Text>
+        <Text style={styles.headerSubtitle}>1st Semester · AY 2025-2026</Text>
       </View>
 
-      {/* Day Selector Tabs */}
-      <View style={styles.daySelectorContainer}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.daySelectorScroll}
-        >
-          {DAYS.map((day) => {
-            const isSelected = selectedDay === day.key;
-            const countForDay = schedules.filter((s) => s.day === day.key).length;
-            return (
-              <TouchableOpacity
-                key={day.key}
-                style={[styles.dayTab, isSelected && styles.dayTabSelected]}
-                onPress={() => setSelectedDay(day.key)}
-                accessibilityLabel={day.label}
-              >
-                <Text style={[styles.dayTabShort, isSelected && styles.dayTabTextSelected]}>
-                  {day.short}
-                </Text>
-                {countForDay > 0 && (
-                  <View style={[styles.dayCountPill, isSelected && styles.dayCountPillSelected]}>
-                    <Text style={[styles.dayCountText, isSelected && styles.dayCountTextSelected]}>
-                      {countForDay}
-                    </Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
+      {/* ── Horizontal Day Picker ── */}
+      <View style={styles.daysContainer}>
+        {WEEK_DAYS.map((item) => {
+          const isSelected = selectedDay === item.key;
+          return (
+            <TouchableOpacity
+              key={item.key}
+              style={[styles.dayCard, isSelected && styles.dayCardSelected]}
+              onPress={() => setSelectedDay(item.key)}
+              activeOpacity={0.75}
+            >
+              <Text style={[styles.dayShort, isSelected && styles.dayShortSelected]}>
+                {item.short}
+              </Text>
+              <Text style={[styles.dateNum, isSelected && styles.dateNumSelected]}>
+                {item.dateNum}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
 
-      {/* Content List */}
+      {/* ── Content Area ── */}
       <ScrollView
-        style={styles.content}
-        contentContainerStyle={styles.contentInner}
+        style={styles.scrollArea}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: Math.max(insets.bottom, 24) + 24 },
+        ]}
+        showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={isRefetching} onRefresh={() => { refetch(); }} tintColor={colors.primary} />
+          <RefreshControl
+            refreshing={isRefetching}
+            onRefresh={() => { refetch(); }}
+            tintColor={colors.primary}
+          />
         }
       >
-        {isLoading ? (
-          <View style={styles.skeletonContainer}>
-            <Skeleton height={110} borderRadius={radius.lg} style={styles.skeletonItem} />
-            <Skeleton height={110} borderRadius={radius.lg} style={styles.skeletonItem} />
-            <Skeleton height={110} borderRadius={radius.lg} />
-          </View>
-        ) : isError ? (
-          <EmptyState
-            title="Could not load schedule"
-            description="Unable to fetch your class schedule at this time."
-            icon="alert-circle-outline"
-            actionLabel="Try Again"
-            onAction={() => refetch()}
-          />
-        ) : daySchedules.length === 0 ? (
-          <EmptyState
-            title="No Classes Scheduled"
-            description={`You have no classes scheduled for ${DAYS.find((d) => d.key === selectedDay)?.label}.`}
-            icon="calendar-outline"
-          />
-        ) : (
-          daySchedules.map((item) => (
-            <Card key={item.id} style={styles.classCard}>
-              <View style={styles.timeRow}>
-                <View style={styles.timeBadge}>
-                  <Ionicons name="time-outline" size={14} color={colors.primary} />
-                  <Text style={styles.timeText}>
-                    {item.startTime} - {item.endTime}
+        {/* Day & count summary */}
+        <View style={styles.summaryRow}>
+          <Text style={styles.summaryDate}>{activeDayItem.fullDate}</Text>
+          <Text style={styles.summaryCount}>
+            {displayClasses.length} {displayClasses.length === 1 ? 'class' : 'classes'}
+          </Text>
+        </View>
+
+        {/* Timeline rows */}
+        <View style={styles.timelineList}>
+          {displayClasses.map((item) => (
+            <View key={item.id} style={styles.timelineRow}>
+              {/* Time column */}
+              <View style={styles.timeColumn}>
+                <Text style={styles.timeHour}>{item.timeHour}</Text>
+                <Text style={styles.timePeriod}>{item.timePeriod}</Text>
+              </View>
+
+              {/* Class card */}
+              <View style={styles.classCard}>
+                <View style={styles.cardHeaderRow}>
+                  <Text style={styles.classTitle} numberOfLines={2}>
+                    {item.title}
                   </Text>
+                  {item.isNext && (
+                    <View style={styles.nextBadge}>
+                      <Text style={styles.nextBadgeText}>Next</Text>
+                    </View>
+                  )}
                 </View>
-                <Badge label={`${item.units} Units`} variant="neutral" size="small" />
-              </View>
 
-              <Text style={styles.courseCode}>{item.courseCode}</Text>
-              <Text style={styles.courseTitle}>{item.courseTitle}</Text>
-
-              <View style={styles.metaRow}>
-                <View style={styles.metaItem}>
-                  <Ionicons name="location-outline" size={14} color={colors.textSecondary} />
-                  <Text style={styles.metaText}>Room {item.room}</Text>
-                </View>
-                <View style={styles.metaItem}>
-                  <Ionicons name="people-outline" size={14} color={colors.textSecondary} />
-                  <Text style={styles.metaText}>Sec {item.section}</Text>
-                </View>
+                <Text style={styles.classDetails}>{item.details}</Text>
+                <Text style={styles.classInstructor}>{item.instructor}</Text>
               </View>
-
-              <View style={styles.facultyRow}>
-                <Ionicons name="person-outline" size={14} color={colors.textMuted} />
-                <Text style={styles.facultyText}>{item.facultyName}</Text>
-              </View>
-            </Card>
-          ))
-        )}
+            </View>
+          ))}
+        </View>
       </ScrollView>
     </View>
   );
@@ -163,151 +193,172 @@ export default function ScheduleScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: '#F8FAFC',
   },
+
   header: {
-    backgroundColor: colors.primary,
-    paddingTop: spacing.xxxl,
-    paddingBottom: spacing.lg,
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: 20,
+    marginBottom: 16,
   },
   headerTitle: {
-    fontSize: typography.sizes.xl,
-    fontWeight: typography.weights.bold,
-    color: colors.textInverse,
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#0F224A',
+    letterSpacing: -0.5,
   },
   headerSubtitle: {
-    fontSize: typography.sizes.xs,
-    color: '#93C5FD',
-    marginTop: 2,
+    fontSize: 13,
+    color: '#64748B',
+    marginTop: 3,
   },
-  daySelectorContainer: {
-    backgroundColor: colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  daySelectorScroll: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    gap: spacing.sm,
-  },
-  dayTab: {
+
+  daysContainer: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    marginBottom: 16,
+  },
+  dayCard: {
+    flex: 1,
+    marginHorizontal: 3,
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.full,
-    backgroundColor: colors.surfaceSubtle,
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: colors.border,
-    minHeight: 40,
+    borderColor: '#EEF2F6',
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
-  dayTabSelected: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
+  dayCardSelected: {
+    backgroundColor: '#1E40AF',
+    borderColor: '#1E40AF',
+    shadowColor: '#1E40AF',
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
   },
-  dayTabShort: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.medium,
-    color: colors.textSecondary,
-  },
-  dayTabTextSelected: {
-    color: colors.textInverse,
-    fontWeight: typography.weights.bold,
-  },
-  dayCountPill: {
-    backgroundColor: colors.border,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 8,
-  },
-  dayCountPillSelected: {
-    backgroundColor: '#3747AC',
-  },
-  dayCountText: {
+  dayShort: {
     fontSize: 11,
+    fontWeight: '500',
+    color: '#64748B',
+    marginBottom: 3,
+  },
+  dayShortSelected: {
+    color: '#E0E7FF',
+  },
+  dateNum: {
+    fontSize: 18,
     fontWeight: '700',
-    color: colors.textSecondary,
+    color: '#0F224A',
   },
-  dayCountTextSelected: {
-    color: colors.textInverse,
+  dateNumSelected: {
+    color: '#FFFFFF',
   },
-  content: {
+
+  scrollArea: {
     flex: 1,
   },
-  contentInner: {
-    padding: spacing.lg,
-    gap: spacing.md,
-    paddingBottom: spacing.xxxl,
+  scrollContent: {
+    paddingHorizontal: 16,
+    paddingTop: 4,
   },
-  skeletonContainer: {
-    gap: spacing.md,
-  },
-  skeletonItem: {
-    marginBottom: spacing.xs,
-  },
-  classCard: {
-    padding: spacing.md,
-    borderLeftWidth: 4,
-    borderLeftColor: colors.accent,
-  },
-  timeRow: {
+
+  summaryRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 6,
+    marginBottom: 16,
+    paddingHorizontal: 4,
   },
-  timeBadge: {
+  summaryDate: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0F224A',
+  },
+  summaryCount: {
+    fontSize: 13,
+    color: '#64748B',
+  },
+
+  timelineList: {
+    gap: 14,
+  },
+  timelineRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#EFF6FF',
-    paddingHorizontal: spacing.sm,
+    alignItems: 'flex-start',
+  },
+  timeColumn: {
+    width: 60,
+    paddingTop: 8,
+    paddingRight: 8,
+  },
+  timeHour: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0F224A',
+  },
+  timePeriod: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#64748B',
+    marginTop: 1,
+  },
+
+  classCard: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: '#EDF2F7',
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  cardHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  classTitle: {
+    flex: 1,
+    fontSize: 14.5,
+    fontWeight: '700',
+    color: '#0F224A',
+    lineHeight: 20,
+    paddingRight: 6,
+  },
+  nextBadge: {
+    backgroundColor: '#FFF7ED',
+    paddingHorizontal: 8,
     paddingVertical: 3,
-    borderRadius: radius.sm,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#FFEDD5',
   },
-  timeText: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.bold,
-    color: colors.primary,
+  nextBadgeText: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: '#EA580C',
   },
-  courseCode: {
-    fontSize: typography.sizes.md,
-    fontWeight: typography.weights.bold,
-    color: colors.textPrimary,
+
+  classDetails: {
+    fontSize: 12.5,
+    color: '#64748B',
+    marginBottom: 3,
   },
-  courseTitle: {
-    fontSize: typography.sizes.sm,
-    color: colors.textSecondary,
-    marginBottom: spacing.sm,
-  },
-  metaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.lg,
-    marginBottom: 6,
-  },
-  metaItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  metaText: {
-    fontSize: typography.sizes.xs,
-    color: colors.textSecondary,
-  },
-  facultyRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    paddingTop: 6,
-    marginTop: 2,
-  },
-  facultyText: {
-    fontSize: typography.sizes.xs,
-    color: colors.textMuted,
+  classInstructor: {
+    fontSize: 12,
+    color: '#94A3B8',
   },
 });

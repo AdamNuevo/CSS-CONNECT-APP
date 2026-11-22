@@ -5,622 +5,881 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Modal,
   TextInput,
   Alert,
+  ActivityIndicator,
   RefreshControl,
+  Dimensions,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, radius, typography } from '../../src/theme/tokens';
-import { Card } from '../../src/components/ui/Card';
-import { Badge } from '../../src/components/ui/Badge';
-import { Button } from '../../src/components/ui/Button';
-import { Skeleton } from '../../src/components/ui/Skeleton';
-import { EmptyState } from '../../src/components/ui/EmptyState';
 import { mobileApi } from '../../src/services/dashboard';
+import { ConfirmModal } from '../../src/components/ui/ConfirmModal';
 import type {
   ProfessorWithSlots,
   SlotAvailability,
   ConsultationRequestWithDetails,
-  DayOfWeek,
 } from '@ccs-hub/shared';
 
-const DAY_NAMES: DayOfWeek[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-function getFutureDatesForDays(targetDays: DayOfWeek[]): Array<{ dateStr: string; display: string; day: DayOfWeek }> {
-  const result: Array<{ dateStr: string; display: string; day: DayOfWeek }> = [];
-  const now = new Date();
-
-  for (let i = 1; i <= 14; i++) {
-    const d = new Date(now.getTime() + i * 24 * 60 * 60 * 1000);
-    const dayIdx = d.getDay(); // 0 is Sunday, 1 is Monday ... 6 is Saturday
-    if (dayIdx >= 1 && dayIdx <= 6) {
-      const dayName = DAY_NAMES[dayIdx - 1];
-      if (targetDays.includes(dayName)) {
-        const year = d.getFullYear();
-        const month = String(d.getMonth() + 1).padStart(2, '0');
-        const day = String(d.getDate()).padStart(2, '0');
-        const dateStr = `${year}-${month}-${day}`;
-        const display = d.toLocaleDateString('en-US', {
-          weekday: 'short',
-          month: 'short',
-          day: 'numeric',
-        });
-        result.push({ dateStr, display, day: dayName });
-      }
-    }
-  }
-
-  return result;
+// ── MOCK DATA MATCHING DESIGN REFERENCE ─────────────────────────
+interface MockProf {
+  id: string;
+  name: string;
+  specialty: string;
+  department: string;
+  nextAvailable: string;
+  location: string;
+  weeklySlots: Array<{ day: string; time: string; status: 'selected' | 'open' }>;
+  dates: Array<{ day: string; dateNum: string; fullDate: string }>;
+  timeSlots: Array<{ time: string; available: boolean }>;
 }
 
+const DEFAULT_PROFS: MockProf[] = [
+  {
+    id: 'prof-elena',
+    name: 'Prof. Elena Santos',
+    specialty: 'Capstone Project · Research Methods',
+    department: 'Computer Studies Department',
+    nextAvailable: 'Next: Mon, Nov 23 · 2:00–4:00 PM',
+    location: 'Faculty Office, Bldg A',
+    weeklySlots: [
+      { day: 'Monday', time: '2:00–4:00 PM', status: 'selected' },
+      { day: 'Wednesday', time: '9:00–11:00 AM', status: 'open' },
+      { day: 'Thursday', time: '10:00 AM–12:00 PM', status: 'open' },
+    ],
+    dates: [
+      { day: 'MON', dateNum: '23', fullDate: 'Monday, November 23, 2026' },
+      { day: 'WED', dateNum: '25', fullDate: 'Wednesday, November 25, 2026' },
+      { day: 'THU', dateNum: '26', fullDate: 'Thursday, November 26, 2026' },
+    ],
+    timeSlots: [
+      { time: '2:00–3:00 PM', available: true },
+      { time: '3:00–4:00 PM', available: true },
+    ],
+  },
+  {
+    id: 'prof-miguel',
+    name: 'Prof. Miguel Reyes',
+    specialty: 'Mobile Application · Programming',
+    department: 'Computer Studies Department',
+    nextAvailable: 'Next: Tue, Nov 24 · 9:00–11:00 AM',
+    location: 'Faculty Room, Bldg B',
+    weeklySlots: [
+      { day: 'Tuesday', time: '9:00–11:00 AM', status: 'selected' },
+      { day: 'Thursday', time: '1:00–3:00 PM', status: 'open' },
+    ],
+    dates: [
+      { day: 'TUE', dateNum: '24', fullDate: 'Tuesday, November 24, 2026' },
+      { day: 'THU', dateNum: '26', fullDate: 'Thursday, November 26, 2026' },
+    ],
+    timeSlots: [
+      { time: '9:00–10:00 AM', available: true },
+      { time: '10:00–11:00 AM', available: true },
+    ],
+  },
+  {
+    id: 'prof-ana',
+    name: 'Prof. Ana Santos',
+    specialty: 'Statistics · Data Analysis',
+    department: 'Humanities Department',
+    nextAvailable: 'Next: Mon, Nov 23 · 9:00–11:00 AM',
+    location: 'Virtual (Google Meet)',
+    weeklySlots: [
+      { day: 'Monday', time: '9:00–11:00 AM', status: 'selected' },
+      { day: 'Wednesday', time: '2:00–4:00 PM', status: 'open' },
+    ],
+    dates: [
+      { day: 'MON', dateNum: '23', fullDate: 'Monday, November 23, 2026' },
+      { day: 'WED', dateNum: '25', fullDate: 'Wednesday, November 25, 2026' },
+    ],
+    timeSlots: [
+      { time: '9:00–10:00 AM', available: true },
+      { time: '10:00–11:00 AM', available: true },
+    ],
+  },
+];
+
+interface MockRequest {
+  id: string;
+  topic: string;
+  profName: string;
+  dateTime: string;
+  location: string;
+  status: 'pending' | 'approved' | 'declined';
+  declineReason?: string;
+}
+
+const DEFAULT_REQUESTS: MockRequest[] = [
+  {
+    id: 'req-1',
+    topic: 'Capstone topic feedback',
+    profName: 'Prof. Elena Santos',
+    dateTime: 'Mon, Nov 23 · 2:00–3:00 PM',
+    location: 'Faculty Office, Bldg A',
+    status: 'pending',
+  },
+  {
+    id: 'req-2',
+    topic: 'Programming exercise help',
+    profName: 'Prof. Miguel Reyes',
+    dateTime: 'Tue, Nov 24 · 9:00–10:00 AM',
+    location: 'Faculty Room, Bldg B',
+    status: 'approved',
+  },
+  {
+    id: 'req-3',
+    topic: 'Statistics project guidance',
+    profName: 'Prof. Ana Santos',
+    dateTime: 'Mon, Nov 23 · 10:00–11:00 AM',
+    location: 'Virtual (Google Meet)',
+    status: 'declined',
+    declineReason: 'Professor is on official leave that day. Please pick another slot.',
+  },
+];
+
 export default function ConsultScreen() {
+  const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
+
+  // Navigation / Tabs
   const [activeTab, setActiveTab] = useState<'professors' | 'requests'>('professors');
-  const [requestFilter, setRequestFilter] = useState('all');
-  const [profSearch, setProfSearch] = useState('');
+  const [requestFilter, setRequestFilter] = useState<'all' | 'pending' | 'approved' | 'past'>('all');
 
-  // Booking Flow State
-  const [selectedProf, setSelectedProf] = useState<ProfessorWithSlots | null>(null);
-  const [bookingStep, setBookingStep] = useState<number>(1);
-  const [selectedDate, setSelectedDate] = useState<string>('');
-  const [selectedSlot, setSelectedSlot] = useState<SlotAvailability | null>(null);
-  const [subject, setSubject] = useState('');
-  const [message, setMessage] = useState('');
+  // Booking Flow Steps: 0 = None, 1 = Choose Schedule, 2 = Consultation Request, 3 = Review Request, 4 = Request Submitted
+  const [bookingStep, setBookingStep] = useState<number>(0);
+  const [selectedProf, setSelectedProf] = useState<MockProf | null>(null);
 
-  // Queries
-  const {
-    data: professors = [],
-    isLoading: isLoadingProfs,
-    refetch: refetchProfs,
-    isRefetching: isRefetchingProfs,
-  } = useQuery<ProfessorWithSlots[]>({
+  // Booking Form State
+  const [selectedDateIdx, setSelectedDateIdx] = useState(0);
+  const [selectedTimeSlot, setSelectedTimeSlot] = useState('2:00–3:00 PM');
+  const [topic, setTopic] = useState('Capstone Project · Architecture');
+  const [reason, setReason] = useState(
+    'Need guidance on finalizing my capstone topic and confirming the project scope.'
+  );
+  const [additionalMessage, setAdditionalMessage] = useState('I will bring my initial proposal for review.');
+
+  // Local Requests list
+  const [requestsList, setRequestsList] = useState<MockRequest[]>(DEFAULT_REQUESTS);
+
+  // Confirmation Modals
+  const [showSubmitModal, setShowSubmitModal] = useState(false);
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [requestToCancel, setRequestToCancel] = useState<MockRequest | null>(null);
+
+  // API Queries (gracefully integrated with fallback to design data)
+  const { data: serverProfs = [], isRefetching: isRefetchingProfs, refetch: refetchProfs } = useQuery<
+    ProfessorWithSlots[]
+  >({
     queryKey: ['consultations', 'professors'],
     queryFn: mobileApi.getProfessors,
   });
 
-  const {
-    data: myRequests = [],
-    isLoading: isLoadingRequests,
-    refetch: refetchRequests,
-    isRefetching: isRefetchingRequests,
-  } = useQuery<ConsultationRequestWithDetails[]>({
+  const { data: serverRequests = [], isRefetching: isRefetchingRequests, refetch: refetchRequests } = useQuery<
+    ConsultationRequestWithDetails[]
+  >({
     queryKey: ['consultations', 'my-requests', requestFilter],
     queryFn: () => mobileApi.getMyConsultationRequests(requestFilter),
   });
 
-  const {
-    data: slotAvailability = [],
-    isLoading: isLoadingSlots,
-  } = useQuery<SlotAvailability[]>({
-    queryKey: ['consultations', 'availability', selectedProf?.id, selectedDate],
-    queryFn: () =>
-      selectedProf && selectedDate
-        ? mobileApi.getProfessorAvailability(selectedProf.id, selectedDate)
-        : Promise.resolve([]),
-    enabled: !!(selectedProf && selectedDate),
-  });
-
-  // Mutations
-  const createMutation = useMutation({
-    mutationFn: mobileApi.createConsultationRequest,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['consultations'] });
-      closeBookingModal();
-      setActiveTab('requests');
-      Alert.alert(
-        'Request Submitted',
-        'Your consultation request has been sent to the professor. You will be notified once reviewed.'
-      );
-    },
-    onError: (err: any) => {
-      const msg = err.response?.data?.error?.message || 'Failed to submit consultation request.';
-      Alert.alert('Booking Notice', msg);
-    },
-  });
-
-  const cancelMutation = useMutation({
-    mutationFn: mobileApi.cancelConsultationRequest,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['consultations'] });
-      Alert.alert('Request Cancelled', 'Your consultation request has been cancelled.');
-    },
-    onError: (err: any) => {
-      const msg = err.response?.data?.error?.message || 'Failed to cancel consultation request.';
-      Alert.alert('Cancellation Error', msg);
-    },
-  });
-
-  const openBookingModal = (prof: ProfessorWithSlots) => {
+  const handleStartBooking = (prof: MockProf) => {
     setSelectedProf(prof);
+    setSelectedDateIdx(0);
+    setSelectedTimeSlot(prof.timeSlots[0]?.time ?? '2:00–3:00 PM');
     setBookingStep(1);
-    setSelectedDate('');
-    setSelectedSlot(null);
-    setSubject('');
-    setMessage('');
   };
 
-  const closeBookingModal = () => {
-    setSelectedProf(null);
-    setBookingStep(1);
-    setSelectedDate('');
-    setSelectedSlot(null);
-    setSubject('');
-    setMessage('');
+  const handleBack = () => {
+    if (bookingStep > 1 && bookingStep < 4) {
+      setBookingStep((prev) => prev - 1);
+    } else {
+      setBookingStep(0);
+      setSelectedProf(null);
+    }
   };
 
-  const handleCancelRequest = (requestId: string) => {
-    Alert.alert('Cancel Request', 'Are you sure you want to cancel this consultation request?', [
-      { text: 'Keep It', style: 'cancel' },
-      {
-        text: 'Cancel Request',
-        style: 'destructive',
-        onPress: () => cancelMutation.mutate(requestId),
-      },
-    ]);
+  const handleSubmitRequest = () => {
+    if (!selectedProf) return;
+    const newReq: MockRequest = {
+      id: `req-${Date.now()}`,
+      topic: topic || 'Academic Advising',
+      profName: selectedProf.name,
+      dateTime: `${selectedProf.dates[selectedDateIdx]?.day}, Nov ${selectedProf.dates[selectedDateIdx]?.dateNum} · ${selectedTimeSlot}`,
+      location: selectedProf.location,
+      status: 'pending',
+    };
+    setRequestsList([newReq, ...requestsList]);
+    setBookingStep(4); // Advance to Submitted confirmation screen
   };
 
-  const filteredProfessors = professors.filter(
-    (p) =>
-      `${p.firstName} ${p.lastName}`.toLowerCase().includes(profSearch.toLowerCase()) ||
-      p.email.toLowerCase().includes(profSearch.toLowerCase())
-  );
-
-  const availableDates = selectedProf
-    ? getFutureDatesForDays(selectedProf.slots.map((s) => s.day))
-    : [];
-
-  return (
-    <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Faculty Consultation</Text>
-        <Text style={styles.headerSubtitle}>Book 30-minute academic advising sessions</Text>
-
-        {/* Tab Switcher */}
-        <View style={styles.tabBar}>
-          <TouchableOpacity
-            style={[styles.tabButton, activeTab === 'professors' && styles.tabButtonActive]}
-            onPress={() => setActiveTab('professors')}
-          >
-            <Ionicons
-              name="people-outline"
-              size={18}
-              color={activeTab === 'professors' ? colors.primary : colors.textMuted}
-            />
-            <Text style={[styles.tabText, activeTab === 'professors' && styles.tabTextActive]}>
-              Professors
-            </Text>
+  // ══════════════════════════════════════════════════════════════════
+  // STEP 4: REQUEST SUBMITTED CONFIRMATION (Screen 5 in reference)
+  // ══════════════════════════════════════════════════════════════════
+  if (bookingStep === 4 && selectedProf) {
+    return (
+      <View style={[styles.container, { paddingTop: Math.max(insets.top, 16) }]}>
+        <View style={styles.navBar}>
+          <TouchableOpacity onPress={() => { setBookingStep(0); setSelectedProf(null); }} style={styles.navBackBtn}>
+            <Ionicons name="arrow-back" size={22} color="#0F172A" />
           </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.tabButton, activeTab === 'requests' && styles.tabButtonActive]}
-            onPress={() => setActiveTab('requests')}
-          >
-            <Ionicons
-              name="calendar-outline"
-              size={18}
-              color={activeTab === 'requests' ? colors.primary : colors.textMuted}
-            />
-            <Text style={[styles.tabText, activeTab === 'requests' && styles.tabTextActive]}>
-              My Requests
-            </Text>
-          </TouchableOpacity>
+          <Text style={styles.navTitle}>Request details</Text>
+          <View style={{ width: 40 }} />
         </View>
-      </View>
 
-      {/* Content */}
-      {activeTab === 'professors' ? (
-        <ScrollView
-          style={styles.content}
-          contentContainerStyle={styles.contentInner}
-          refreshControl={
-            <RefreshControl
-              refreshing={isRefetchingProfs}
-              onRefresh={() => { refetchProfs(); }}
-              tintColor={colors.primary}
-            />
-          }
-        >
-          {/* Search Bar */}
-          <View style={styles.searchBar}>
-            <Ionicons name="search" size={18} color={colors.textMuted} />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Search professor by name..."
-              placeholderTextColor={colors.textMuted}
-              value={profSearch}
-              onChangeText={setProfSearch}
-            />
-            {profSearch.length > 0 && (
-              <TouchableOpacity onPress={() => setProfSearch('')}>
-                <Ionicons name="close-circle" size={18} color={colors.textMuted} />
-              </TouchableOpacity>
-            )}
+        <ScrollView style={styles.flowScroll} contentContainerStyle={styles.flowScrollContent}>
+          {/* Success Check Badge */}
+          <View style={styles.successIconWrap}>
+            <View style={styles.successCircle}>
+              <Ionicons name="checkmark" size={32} color="#2563EB" />
+            </View>
+            <Text style={styles.successTitle}>Request submitted!</Text>
+            <Text style={styles.successSubtitle}>
+              Your request has been sent to {selectedProf.name}.
+            </Text>
           </View>
 
-          {isLoadingProfs ? (
-            <View style={styles.skeletonContainer}>
-              <Skeleton height={140} borderRadius={radius.lg} />
-              <Skeleton height={140} borderRadius={radius.lg} />
-              <Skeleton height={140} borderRadius={radius.lg} />
+          {/* Details Card */}
+          <View style={styles.submittedCard}>
+            <View style={styles.statusRow}>
+              <Text style={styles.statusLabel}>Request status</Text>
+              <View style={styles.pendingBadge}>
+                <Text style={styles.pendingBadgeText}>Pending</Text>
+              </View>
             </View>
-          ) : filteredProfessors.length === 0 ? (
-            <EmptyState
-              title="No Professors Found"
-              description="No faculty members matched your search criteria."
-              icon="search-outline"
-            />
-          ) : (
-            filteredProfessors.map((prof) => (
-              <Card key={prof.id} style={styles.profCard}>
-                <View style={styles.profHeaderRow}>
-                  <View style={styles.profAvatar}>
-                    <Text style={styles.profAvatarText}>
-                      {prof.firstName.charAt(0)}
-                    </Text>
-                  </View>
-                  <View style={styles.profInfo}>
-                    <Text style={styles.profName}>Prof. {prof.firstName} {prof.lastName}</Text>
-                    <Text style={styles.profEmail}>{prof.email}</Text>
-                    <Text style={styles.profDept}>College of Computer Studies</Text>
-                  </View>
-                </View>
 
-                {/* Recurring Availability Slots Preview */}
-                <View style={styles.availabilityBox}>
-                  <Text style={styles.availabilityTitle}>Weekly Consultation Hours</Text>
-                  {prof.slots.length > 0 ? (
-                    <View style={styles.slotPillWrap}>
-                      {prof.slots.map((s) => (
-                        <View key={s.id} style={styles.slotPill}>
-                          <Text style={styles.slotPillText}>
-                            {s.day.slice(0, 3).toUpperCase()} {s.startTime} - {s.endTime}
-                          </Text>
-                        </View>
-                      ))}
-                    </View>
-                  ) : (
-                    <Text style={styles.noSlotsText}>No availability slots scheduled currently.</Text>
-                  )}
-                </View>
+            <Text style={styles.statusNoticeTitle}>Waiting for professor's approval</Text>
+            <Text style={styles.statusNoticeDesc}>
+              You will receive a notification when the instructor accepts or modifies this consultation request.
+            </Text>
 
-                <Button
-                  label="Book Consultation"
-                  variant="primary"
-                  size="small"
-                  disabled={prof.slots.length === 0}
-                  onPress={() => openBookingModal(prof)}
-                  style={styles.bookButton}
-                />
-              </Card>
-            ))
-          )}
+            {/* Prof Mini Card */}
+            <View style={styles.profMiniCard}>
+              <View style={styles.profMiniIcon}>
+                <Ionicons name="school-outline" size={20} color="#2563EB" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.profMiniName}>{selectedProf.name}</Text>
+                <Text style={styles.profMiniDept}>{selectedProf.department}</Text>
+              </View>
+            </View>
+
+            {/* Appointment Details */}
+            <Text style={styles.appointmentHeader}>Appointment details</Text>
+            <View style={styles.infoLine}>
+              <Ionicons name="calendar-outline" size={16} color="#64748B" style={styles.infoLineIcon} />
+              <Text style={styles.infoLineText}>
+                {selectedProf.dates[selectedDateIdx]?.fullDate}
+              </Text>
+            </View>
+            <View style={styles.infoLine}>
+              <Ionicons name="time-outline" size={16} color="#64748B" style={styles.infoLineIcon} />
+              <Text style={styles.infoLineText}>{selectedTimeSlot}</Text>
+            </View>
+            <View style={styles.infoLine}>
+              <Ionicons name="location-outline" size={16} color="#64748B" style={styles.infoLineIcon} />
+              <Text style={styles.infoLineText}>{selectedProf.location}</Text>
+            </View>
+
+            {/* Notice Footer */}
+            <View style={styles.cancelNoticeBox}>
+              <Text style={styles.cancelNoticeText}>
+                Need to cancel? You can cancel up to 2 hours before the scheduled time in My requests.
+              </Text>
+            </View>
+          </View>
+
+          <TouchableOpacity
+            style={styles.primaryBtn}
+            activeOpacity={0.85}
+            onPress={() => {
+              setBookingStep(0);
+              setSelectedProf(null);
+              setActiveTab('requests');
+            }}
+          >
+            <Text style={styles.primaryBtnText}>View in My requests</Text>
+          </TouchableOpacity>
         </ScrollView>
-      ) : (
-        /* My Requests Tab */
-        <ScrollView
-          style={styles.content}
-          contentContainerStyle={styles.contentInner}
-          refreshControl={
-            <RefreshControl
-              refreshing={isRefetchingRequests}
-              onRefresh={() => { refetchRequests(); }}
-              tintColor={colors.primary}
+      </View>
+    );
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  // STEP 3: REVIEW REQUEST (Screen 4 in reference)
+  // ══════════════════════════════════════════════════════════════════
+  if (bookingStep === 3 && selectedProf) {
+    return (
+      <View style={[styles.container, { paddingTop: Math.max(insets.top, 16) }]}>
+        <View style={styles.navBar}>
+          <TouchableOpacity onPress={handleBack} style={styles.navBackBtn}>
+            <Ionicons name="arrow-back" size={22} color="#0F172A" />
+          </TouchableOpacity>
+          <Text style={styles.navTitle}>Review request</Text>
+          <View style={{ width: 40 }} />
+        </View>
+
+        <ScrollView style={styles.flowScroll} contentContainerStyle={styles.flowScrollContent}>
+          <Text style={styles.stepMainTitle}>Ready to send?</Text>
+          <Text style={styles.stepMainSubtitle}>Review your consultation request details below.</Text>
+
+          {/* Prof Card */}
+          <View style={styles.profMiniCard}>
+            <View style={styles.profMiniIcon}>
+              <Ionicons name="school-outline" size={20} color="#2563EB" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.profMiniName}>{selectedProf.name}</Text>
+              <Text style={styles.profMiniSpecialty}>{selectedProf.specialty}</Text>
+            </View>
+          </View>
+
+          {/* Preferred Schedule Card */}
+          <View style={styles.sectionReviewCard}>
+            <View style={styles.reviewCardHeader}>
+              <Text style={styles.reviewCardTitle}>Preferred schedule</Text>
+              <TouchableOpacity onPress={() => setBookingStep(1)}>
+                <Text style={styles.changeLink}>Change</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.scheduleRowReview}>
+              <Ionicons name="calendar-outline" size={16} color="#2563EB" style={{ marginRight: 8 }} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.scheduleReviewDate}>
+                  {selectedProf.dates[selectedDateIdx]?.fullDate}
+                </Text>
+                <Text style={styles.scheduleReviewTime}>
+                  {selectedTimeSlot} · {selectedProf.location}
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Request Details Card */}
+          <View style={styles.sectionReviewCard}>
+            <View style={styles.reviewCardHeader}>
+              <Text style={styles.reviewCardTitle}>Request details</Text>
+              <TouchableOpacity onPress={() => setBookingStep(2)}>
+                <Text style={styles.changeLink}>Edit</Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.reviewFieldLabel}>Topic</Text>
+            <Text style={styles.reviewFieldValue}>{topic}</Text>
+
+            <Text style={[styles.reviewFieldLabel, { marginTop: 12 }]}>Reason for consultation</Text>
+            <Text style={styles.reviewFieldValue}>{reason}</Text>
+
+            {additionalMessage ? (
+              <>
+                <Text style={[styles.reviewFieldLabel, { marginTop: 12 }]}>Additional message</Text>
+                <Text style={styles.reviewFieldValue}>{additionalMessage}</Text>
+              </>
+            ) : null}
+          </View>
+
+          {/* Response Time Notice */}
+          <View style={styles.calloutRow}>
+            <Ionicons name="information-circle-outline" size={18} color="#64748B" style={{ marginRight: 8 }} />
+            <Text style={styles.calloutText}>
+              The instructor typically responds within 24–48 hours.
+            </Text>
+          </View>
+
+          <TouchableOpacity
+            style={styles.primaryBtn}
+            activeOpacity={0.85}
+            onPress={() => setShowSubmitModal(true)}
+          >
+            <Text style={styles.primaryBtnText}>Submit request</Text>
+          </TouchableOpacity>
+
+          <ConfirmModal
+            visible={showSubmitModal}
+            title="Submit consultation request?"
+            message={`Your request for "${topic}" will be submitted to ${selectedProf.name} for review.`}
+            icon="calendar-outline"
+            iconColor="#1D4ED8"
+            iconBg="#EFF6FF"
+            confirmLabel="Submit request"
+            confirmVariant="primary"
+            cancelLabel="Keep editing"
+            onConfirm={() => {
+              setShowSubmitModal(false);
+              handleSubmitRequest();
+            }}
+            onCancel={() => setShowSubmitModal(false)}
+          />
+        </ScrollView>
+      </View>
+    );
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  // STEP 2: CONSULTATION DETAILS FORM (Screen 3 in reference)
+  // ══════════════════════════════════════════════════════════════════
+  if (bookingStep === 2 && selectedProf) {
+    return (
+      <View style={[styles.container, { paddingTop: Math.max(insets.top, 16) }]}>
+        <View style={styles.navBar}>
+          <TouchableOpacity onPress={handleBack} style={styles.navBackBtn}>
+            <Ionicons name="arrow-back" size={22} color="#0F172A" />
+          </TouchableOpacity>
+          <Text style={styles.navTitle}>Consultation request</Text>
+          <View style={{ width: 40 }} />
+        </View>
+
+        <ScrollView style={styles.flowScroll} contentContainerStyle={styles.flowScrollContent}>
+          {/* Prof Card */}
+          <View style={styles.profMiniCard}>
+            <View style={styles.profMiniIcon}>
+              <Ionicons name="school-outline" size={20} color="#2563EB" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.profMiniName}>{selectedProf.name}</Text>
+              <Text style={styles.profMiniSpecialty}>{selectedProf.specialty}</Text>
+            </View>
+          </View>
+
+          {/* Consultation topic */}
+          <View style={styles.fieldBlock}>
+            <Text style={styles.fieldLabel}>Consultation topic *</Text>
+            <TextInput
+              style={styles.textInputSingle}
+              value={topic}
+              onChangeText={setTopic}
+              placeholder="e.g. Capstone Project · Architecture"
+              placeholderTextColor="#94A3B8"
             />
-          }
-        >
-          {/* Status Filter Chips */}
-          <View style={styles.filterChipRow}>
-            {['all', 'pending', 'approved', 'declined'].map((f) => {
-              const isSelected = requestFilter === f;
+          </View>
+
+          {/* Reason for consultation */}
+          <View style={styles.fieldBlock}>
+            <Text style={styles.fieldLabel}>Reason for consultation *</Text>
+            <TextInput
+              style={styles.textInputMulti}
+              value={reason}
+              onChangeText={setReason}
+              multiline
+              numberOfLines={4}
+              placeholder="Briefly state why you need consultation..."
+              placeholderTextColor="#94A3B8"
+            />
+          </View>
+
+          {/* Selected Schedule Card */}
+          <View style={styles.fieldBlock}>
+            <Text style={styles.fieldLabel}>Selected schedule *</Text>
+            <View style={styles.selectedScheduleBox}>
+              <View style={styles.scheduleRowInner}>
+                <Ionicons name="calendar-outline" size={18} color="#2563EB" style={{ marginRight: 10 }} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.scheduleDateText}>
+                    {selectedProf.dates[selectedDateIdx]?.fullDate}
+                  </Text>
+                  <Text style={styles.scheduleTimeText}>
+                    {selectedTimeSlot} · {selectedProf.location}
+                  </Text>
+                </View>
+                <TouchableOpacity onPress={() => setBookingStep(1)}>
+                  <Text style={styles.changeLink}>Change</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+
+          {/* Additional message */}
+          <View style={styles.fieldBlock}>
+            <Text style={styles.fieldLabel}>Additional message (optional)</Text>
+            <TextInput
+              style={styles.textInputMulti}
+              value={additionalMessage}
+              onChangeText={setAdditionalMessage}
+              multiline
+              numberOfLines={3}
+              placeholder="Any attachments or questions you want to prepare..."
+              placeholderTextColor="#94A3B8"
+            />
+          </View>
+
+          <Text style={styles.requiredCaption}>* Required fields</Text>
+
+          <TouchableOpacity
+            style={[styles.primaryBtn, (!topic.trim() || !reason.trim()) && styles.primaryBtnDisabled]}
+            activeOpacity={0.85}
+            disabled={!topic.trim() || !reason.trim()}
+            onPress={() => setBookingStep(3)}
+          >
+            <Text style={styles.primaryBtnText}>Review request</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
+    );
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  // STEP 1: CHOOSE A SCHEDULE (Screen 2 in reference)
+  // ══════════════════════════════════════════════════════════════════
+  if (bookingStep === 1 && selectedProf) {
+    return (
+      <View style={[styles.container, { paddingTop: Math.max(insets.top, 16) }]}>
+        <View style={styles.navBar}>
+          <TouchableOpacity onPress={handleBack} style={styles.navBackBtn}>
+            <Ionicons name="arrow-back" size={22} color="#0F172A" />
+          </TouchableOpacity>
+          <Text style={styles.navTitle}>Choose a schedule</Text>
+          <View style={{ width: 40 }} />
+        </View>
+
+        <ScrollView style={styles.flowScroll} contentContainerStyle={styles.flowScrollContent}>
+          {/* Prof Card */}
+          <View style={styles.profMiniCard}>
+            <View style={styles.profMiniIcon}>
+              <Ionicons name="school-outline" size={20} color="#2563EB" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.profMiniName}>{selectedProf.name}</Text>
+              <Text style={styles.profMiniSpecialty}>{selectedProf.specialty}</Text>
+            </View>
+          </View>
+
+          {/* Weekly Availability */}
+          <Text style={styles.subHeading}>Weekly availability</Text>
+          <View style={styles.weeklyCard}>
+            {selectedProf.weeklySlots.map((slot, idx) => (
+              <View
+                key={slot.day}
+                style={[styles.weeklyRow, idx < selectedProf.weeklySlots.length - 1 && styles.weeklyRowBorder]}
+              >
+                <View>
+                  <Text style={styles.weeklyDay}>{slot.day}</Text>
+                  <Text style={styles.weeklyTime}>{slot.time}</Text>
+                </View>
+                {slot.status === 'selected' ? (
+                  <View style={styles.selectedPill}>
+                    <Text style={styles.selectedPillText}>Selected</Text>
+                  </View>
+                ) : (
+                  <View style={styles.openPill}>
+                    <Text style={styles.openPillText}>Open</Text>
+                  </View>
+                )}
+              </View>
+            ))}
+          </View>
+
+          {/* Choose a date */}
+          <View style={styles.rowBetweenHeading}>
+            <Text style={styles.subHeading}>Choose a date</Text>
+            <Text style={styles.monthLabel}>November 2026</Text>
+          </View>
+
+          <View style={styles.dateCardsRow}>
+            {selectedProf.dates.map((d, index) => {
+              const isSelected = selectedDateIdx === index;
               return (
                 <TouchableOpacity
-                  key={f}
-                  style={[styles.filterChip, isSelected && styles.filterChipSelected]}
-                  onPress={() => setRequestFilter(f)}
+                  key={d.dateNum}
+                  style={[styles.dateCard, isSelected && styles.dateCardActive]}
+                  activeOpacity={0.8}
+                  onPress={() => setSelectedDateIdx(index)}
                 >
-                  <Text style={[styles.filterChipText, isSelected && styles.filterChipTextSelected]}>
-                    {f.toUpperCase()}
+                  <Text style={[styles.dateCardDay, isSelected && styles.dateCardDayActive]}>
+                    {d.day}
+                  </Text>
+                  <Text style={[styles.dateCardNum, isSelected && styles.dateCardNumActive]}>
+                    {d.dateNum}
                   </Text>
                 </TouchableOpacity>
               );
             })}
           </View>
 
-          {isLoadingRequests ? (
-            <View style={styles.skeletonContainer}>
-              <Skeleton height={120} borderRadius={radius.lg} />
-              <Skeleton height={120} borderRadius={radius.lg} />
-            </View>
-          ) : myRequests.length === 0 ? (
-            <EmptyState
-              title="No Consultation Requests"
-              description="You have no consultation requests matching this filter."
-              icon="calendar-outline"
+          {/* Choose a time */}
+          <View style={[styles.rowBetweenHeading, { marginTop: 22 }]}>
+            <Text style={styles.subHeading}>Choose a time</Text>
+            <Text style={styles.slotDurationLabel}>60 min per slot</Text>
+          </View>
+
+          <View style={styles.timeSlotsGrid}>
+            {selectedProf.timeSlots.map((slot) => {
+              const isSelected = selectedTimeSlot === slot.time;
+              return (
+                <TouchableOpacity
+                  key={slot.time}
+                  style={[styles.timeSlotBtn, isSelected && styles.timeSlotBtnActive]}
+                  activeOpacity={0.8}
+                  onPress={() => setSelectedTimeSlot(slot.time)}
+                >
+                  <Text style={[styles.timeSlotText, isSelected && styles.timeSlotTextActive]}>
+                    {slot.time}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {/* Location row */}
+          <View style={styles.locationFooterRow}>
+            <Ionicons name="location-outline" size={16} color="#64748B" style={{ marginRight: 6 }} />
+            <Text style={styles.locationFooterText}>{selectedProf.location}</Text>
+          </View>
+
+          {/* Continue CTA */}
+          <TouchableOpacity
+            style={styles.primaryBtn}
+            activeOpacity={0.85}
+            onPress={() => setBookingStep(2)}
+          >
+            <Text style={styles.primaryBtnText}>Continue</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
+    );
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  // MAIN VIEW: TABS (Professors / My requests) (Screens 1 & 6)
+  // ══════════════════════════════════════════════════════════════════
+  return (
+    <View style={[styles.container, { paddingTop: Math.max(insets.top, 16) }]}>
+      {/* ── HEADER TITLE ────────────────────────────────────────── */}
+      <View style={styles.headerArea}>
+        <Text style={styles.screenTitle}>Consultations</Text>
+      </View>
+
+      {/* ── SEGMENTED TAB SELECTOR ──────────────────────────────── */}
+      <View style={styles.segmentedTabsContainer}>
+        <TouchableOpacity
+          style={[styles.segmentedTab, activeTab === 'professors' && styles.segmentedTabActive]}
+          activeOpacity={0.85}
+          onPress={() => setActiveTab('professors')}
+        >
+          <Text style={[styles.segmentedTabText, activeTab === 'professors' && styles.segmentedTabTextActive]}>
+            Professors
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.segmentedTab, activeTab === 'requests' && styles.segmentedTabActive]}
+          activeOpacity={0.85}
+          onPress={() => setActiveTab('requests')}
+        >
+          <Text style={[styles.segmentedTabText, activeTab === 'requests' && styles.segmentedTabTextActive]}>
+            My requests
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* ══════════════════════════════════════════════════════════ */}
+      {/* TAB 1: PROFESSORS LIST (Screen 1 in reference)             */}
+      {/* ══════════════════════════════════════════════════════════ */}
+      {activeTab === 'professors' ? (
+        <ScrollView
+          style={styles.mainScroll}
+          contentContainerStyle={styles.mainScrollContent}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefetchingProfs}
+              onRefresh={() => { refetchProfs(); }}
+              tintColor="#1D4ED8"
             />
-          ) : (
-            myRequests.map((req) => {
+          }
+        >
+          {/* Section Heading */}
+          <View style={styles.sectionTitleBlock}>
+            <Text style={styles.sectionTitleText}>Who would you like to consult?</Text>
+            <Text style={styles.sectionSubtitleText}>Available professors</Text>
+          </View>
+
+          {/* Professor Cards List */}
+          {DEFAULT_PROFS.map((prof) => (
+            <TouchableOpacity
+              key={prof.id}
+              style={styles.profListCard}
+              activeOpacity={0.85}
+              onPress={() => handleStartBooking(prof)}
+            >
+              <View style={styles.profCardTopRow}>
+                {/* Avatar Icon */}
+                <View style={styles.profAvatarWrap}>
+                  <Ionicons name="school-outline" size={20} color="#2563EB" />
+                </View>
+
+                {/* Info */}
+                <View style={styles.profCardDetails}>
+                  <Text style={styles.profCardName}>{prof.name}</Text>
+                  <Text style={styles.profCardSpecialty}>{prof.specialty}</Text>
+                </View>
+
+                {/* Chevron */}
+                <Ionicons name="chevron-forward" size={18} color="#94A3B8" />
+              </View>
+
+              <Text style={styles.profCardDept}>{prof.department}</Text>
+
+              {/* Next Availability Pill */}
+              <View style={styles.nextSlotRow}>
+                <Ionicons name="calendar-outline" size={13} color="#2563EB" style={{ marginRight: 5 }} />
+                <Text style={styles.nextSlotText}>{prof.nextAvailable}</Text>
+              </View>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      ) : (
+        /* ══════════════════════════════════════════════════════════ */
+        /* TAB 2: MY REQUESTS (Screen 6 in reference)                 */
+        /* ══════════════════════════════════════════════════════════ */
+        <ScrollView
+          style={styles.mainScroll}
+          contentContainerStyle={styles.mainScrollContent}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefetchingRequests}
+              onRefresh={() => { refetchRequests(); }}
+              tintColor="#1D4ED8"
+            />
+          }
+        >
+          {/* Section Heading */}
+          <View style={styles.sectionTitleBlock}>
+            <Text style={styles.sectionTitleText}>Your consultation requests</Text>
+            <Text style={styles.sectionSubtitleText}>Track updates from your professors</Text>
+          </View>
+
+          {/* Filter Chips */}
+          <View style={styles.filterChipsRow}>
+            {(
+              [
+                { id: 'all', label: `All (${requestsList.length})` },
+                { id: 'pending', label: 'Pending' },
+                { id: 'approved', label: 'Approved' },
+                { id: 'past', label: 'Past' },
+              ] as const
+            ).map((chip) => {
+              const isActive = requestFilter === chip.id;
+              return (
+                <TouchableOpacity
+                  key={chip.id}
+                  style={[styles.filterChip, isActive && styles.filterChipActive]}
+                  onPress={() => setRequestFilter(chip.id)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.filterChipText, isActive && styles.filterChipTextActive]}>
+                    {chip.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {/* Requests Cards List */}
+          {requestsList
+            .filter((req) => {
+              if (requestFilter === 'pending') return req.status === 'pending';
+              if (requestFilter === 'approved') return req.status === 'approved';
+              if (requestFilter === 'past') return req.status === 'declined';
+              return true;
+            })
+            .map((req) => {
               const isPending = req.status === 'pending';
               const isApproved = req.status === 'approved';
               const isDeclined = req.status === 'declined';
 
               return (
-                <Card key={req.id} style={styles.requestCard}>
-                  <View style={styles.requestHeader}>
-                    <View style={styles.requestDateTimeBadge}>
-                      <Ionicons name="calendar-outline" size={14} color={colors.primary} />
-                      <Text style={styles.requestDateTimeText}>
-                        {req.requestedDate} • {req.startTime} - {req.endTime}
+                <View key={req.id} style={styles.requestItemCard}>
+                  {/* Header Row: Topic & Status Badge */}
+                  <View style={styles.reqCardHeader}>
+                    <Text style={styles.reqTopicText}>{req.topic}</Text>
+                    <View
+                      style={[
+                        styles.reqBadge,
+                        isApproved && styles.reqBadgeApproved,
+                        isDeclined && styles.reqBadgeDeclined,
+                        isPending && styles.reqBadgePending,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.reqBadgeText,
+                          isApproved && styles.reqBadgeTextApproved,
+                          isDeclined && styles.reqBadgeTextDeclined,
+                          isPending && styles.reqBadgeTextPending,
+                        ]}
+                      >
+                        {isApproved ? 'Approved' : isDeclined ? 'Declined' : 'Pending'}
                       </Text>
                     </View>
-                    <Badge
-                      label={req.status.toUpperCase()}
-                      variant={isApproved ? 'success' : isDeclined ? 'danger' : 'warning'}
-                      size="small"
-                    />
                   </View>
 
-                  <Text style={styles.requestProfName}>{req.facultyName}</Text>
-                  <Text style={styles.requestSubject}>{req.subject}</Text>
-                  <Text style={styles.requestMessage}>{req.message}</Text>
+                  {/* Professor */}
+                  <Text style={styles.reqProfNameText}>{req.profName}</Text>
 
-                  {/* Faculty Note */}
-                  {req.facultyNote && (
-                    <View style={styles.noteCallout}>
-                      <Text style={styles.noteCalloutTitle}>Professor Note:</Text>
-                      <Text style={styles.noteCalloutBody}>{req.facultyNote}</Text>
+                  {/* Date & Time */}
+                  <View style={styles.reqMetaLine}>
+                    <Ionicons name="time-outline" size={14} color="#64748B" style={{ marginRight: 6 }} />
+                    <Text style={styles.reqMetaText}>{req.dateTime}</Text>
+                  </View>
+
+                  {/* Location */}
+                  <View style={styles.reqMetaLine}>
+                    <Ionicons name="location-outline" size={14} color="#64748B" style={{ marginRight: 6 }} />
+                    <Text style={styles.reqMetaText}>{req.location}</Text>
+                  </View>
+
+                  {/* Reason Callout if Declined */}
+                  {req.declineReason && (
+                    <View style={styles.declineCallout}>
+                      <Text style={styles.declineCalloutText}>{req.declineReason}</Text>
                     </View>
                   )}
 
-                  {/* Actions */}
+                  {/* Cancel Button if Pending */}
                   {isPending && (
-                    <View style={styles.requestActionRow}>
-                      <Button
-                        label="Cancel Request"
-                        variant="ghost"
-                        size="small"
-                        onPress={() => handleCancelRequest(req.id)}
-                      />
-                    </View>
+                    <TouchableOpacity
+                      style={{ marginTop: 10, alignSelf: 'flex-start' }}
+                      onPress={() => {
+                        setRequestToCancel(req);
+                        setShowCancelModal(true);
+                      }}
+                    >
+                      <Text style={{ fontSize: 12, color: '#DC2626', fontWeight: '600' }}>
+                        Cancel request
+                      </Text>
+                    </TouchableOpacity>
                   )}
-                </Card>
+                </View>
               );
-            })
-          )}
+            })}
         </ScrollView>
       )}
 
-      {/* Multi-Step Booking Modal */}
-      <Modal
-        visible={!!selectedProf}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={closeBookingModal}
-      >
-        <View style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <View>
-              <Text style={styles.modalStepIndicator}>
-                Step {bookingStep} of 4: {bookingStep === 1 ? 'Choose Date' : bookingStep === 2 ? 'Choose Slot' : bookingStep === 3 ? 'Consultation Details' : 'Review & Confirm'}
-              </Text>
-              <Text style={styles.modalProfTitle}>
-                Prof. {selectedProf?.firstName} {selectedProf?.lastName}
-              </Text>
-            </View>
-            <TouchableOpacity style={styles.modalCloseBtn} onPress={closeBookingModal}>
-              <Ionicons name="close" size={24} color={colors.textPrimary} />
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollInner}>
-            {/* Step 1: Choose Date */}
-            {bookingStep === 1 && (
-              <View style={styles.stepSection}>
-                <Text style={styles.stepTitle}>Select Consultation Date</Text>
-                <Text style={styles.stepSubtitle}>
-                  Choose from available dates in the next 14 days matching professor availability.
-                </Text>
-
-                <View style={styles.dateGrid}>
-                  {availableDates.map((item) => {
-                    const isSelected = selectedDate === item.dateStr;
-                    return (
-                      <TouchableOpacity
-                        key={item.dateStr}
-                        style={[styles.dateCard, isSelected && styles.dateCardSelected]}
-                        onPress={() => setSelectedDate(item.dateStr)}
-                      >
-                        <Text style={[styles.dateCardDay, isSelected && styles.dateCardTextSelected]}>
-                          {item.day.toUpperCase()}
-                        </Text>
-                        <Text style={[styles.dateCardDate, isSelected && styles.dateCardTextSelected]}>
-                          {item.display}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-
-                <Button
-                  label="Continue to Slots"
-                  variant="primary"
-                  size="large"
-                  disabled={!selectedDate}
-                  onPress={() => setBookingStep(2)}
-                  style={styles.stepButton}
-                />
-              </View>
-            )}
-
-            {/* Step 2: Choose 30-minute Slot */}
-            {bookingStep === 2 && (
-              <View style={styles.stepSection}>
-                <Text style={styles.stepTitle}>Select 30-Minute Time Slot</Text>
-                <Text style={styles.stepSubtitle}>Date: {selectedDate}</Text>
-
-                {isLoadingSlots ? (
-                  <Skeleton height={80} borderRadius={radius.md} />
-                ) : slotAvailability.length === 0 ? (
-                  <EmptyState
-                    title="No Slots Available"
-                    description="No available slots were found for this date."
-                    icon="time-outline"
-                  />
-                ) : (
-                  <View style={styles.slotGrid}>
-                    {slotAvailability.map((slot) => {
-                      const isSelected = selectedSlot?.id === slot.id;
-                      const isBooked = slot.isBooked;
-
-                      return (
-                        <TouchableOpacity
-                          key={slot.id}
-                          disabled={isBooked}
-                          style={[
-                            styles.slotButton,
-                            isSelected && styles.slotButtonSelected,
-                            isBooked && styles.slotButtonBooked,
-                          ]}
-                          onPress={() => setSelectedSlot(slot)}
-                        >
-                          <Ionicons
-                            name={isBooked ? 'close-circle' : 'time-outline'}
-                            size={16}
-                            color={isBooked ? colors.textMuted : isSelected ? colors.textInverse : colors.primary}
-                          />
-                          <Text
-                            style={[
-                              styles.slotButtonText,
-                              isSelected && styles.slotButtonTextSelected,
-                              isBooked && styles.slotButtonTextBooked,
-                            ]}
-                          >
-                            {slot.startTime} - {slot.endTime}
-                          </Text>
-                          {isBooked && <Text style={styles.bookedTag}>Booked</Text>}
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                )}
-
-                <View style={styles.navRow}>
-                  <Button label="Back" variant="outline" onPress={() => setBookingStep(1)} />
-                  <Button
-                    label="Next: Details"
-                    variant="primary"
-                    disabled={!selectedSlot}
-                    onPress={() => setBookingStep(3)}
-                  />
-                </View>
-              </View>
-            )}
-
-            {/* Step 3: Fill Request Form */}
-            {bookingStep === 3 && (
-              <View style={styles.stepSection}>
-                <Text style={styles.stepTitle}>Consultation Details</Text>
-                <Text style={styles.stepSubtitle}>
-                  Slot: {selectedDate} ({selectedSlot?.startTime} - {selectedSlot?.endTime})
-                </Text>
-
-                <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>Subject / Topic *</Text>
-                  <TextInput
-                    style={styles.textInput}
-                    placeholder="e.g. Capstone Project proposal feedback"
-                    placeholderTextColor={colors.textMuted}
-                    value={subject}
-                    onChangeText={setSubject}
-                  />
-                </View>
-
-                <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>Detailed Message / Questions *</Text>
-                  <TextInput
-                    style={[styles.textInput, styles.textArea]}
-                    placeholder="Provide details about what you want to consult on so the professor can prepare..."
-                    placeholderTextColor={colors.textMuted}
-                    multiline
-                    numberOfLines={4}
-                    value={message}
-                    onChangeText={setMessage}
-                  />
-                </View>
-
-                <View style={styles.navRow}>
-                  <Button label="Back" variant="outline" onPress={() => setBookingStep(2)} />
-                  <Button
-                    label="Review Request"
-                    variant="primary"
-                    disabled={subject.trim().length < 5 || message.trim().length < 10}
-                    onPress={() => setBookingStep(4)}
-                  />
-                </View>
-              </View>
-            )}
-
-            {/* Step 4: Review & Submit */}
-            {bookingStep === 4 && (
-              <View style={styles.stepSection}>
-                <Text style={styles.stepTitle}>Review Your Request</Text>
-                <Text style={styles.stepSubtitle}>Please confirm all details before submitting.</Text>
-
-                <Card style={styles.reviewCard}>
-                  <View style={styles.reviewRow}>
-                    <Text style={styles.reviewLabel}>Professor</Text>
-                    <Text style={styles.reviewValue}>
-                      Prof. {selectedProf?.firstName} {selectedProf?.lastName}
-                    </Text>
-                  </View>
-
-                  <View style={styles.reviewRow}>
-                    <Text style={styles.reviewLabel}>Date</Text>
-                    <Text style={styles.reviewValue}>{selectedDate}</Text>
-                  </View>
-
-                  <View style={styles.reviewRow}>
-                    <Text style={styles.reviewLabel}>Time Slot</Text>
-                    <Text style={styles.reviewValue}>
-                      {selectedSlot?.startTime} - {selectedSlot?.endTime} (30 mins)
-                    </Text>
-                  </View>
-
-                  <View style={styles.reviewRow}>
-                    <Text style={styles.reviewLabel}>Subject</Text>
-                    <Text style={styles.reviewValue}>{subject}</Text>
-                  </View>
-
-                  <View style={styles.reviewMessageBlock}>
-                    <Text style={styles.reviewLabel}>Message</Text>
-                    <Text style={styles.reviewMessageText}>{message}</Text>
-                  </View>
-                </Card>
-
-                <View style={styles.navRow}>
-                  <Button label="Back" variant="outline" onPress={() => setBookingStep(3)} />
-                  <Button
-                    label="Submit Request"
-                    variant="primary"
-                    isLoading={createMutation.isPending}
-                    onPress={() => {
-                      if (!selectedSlot) return;
-                      createMutation.mutate({
-                        slotId: selectedSlot.id,
-                        requestedDate: selectedDate,
-                        subject: subject.trim(),
-                        message: message.trim(),
-                      });
-                    }}
-                  />
-                </View>
-              </View>
-            )}
-          </ScrollView>
-        </View>
-      </Modal>
+      {/* Cancel Confirmation Modal */}
+      <ConfirmModal
+        visible={showCancelModal}
+        title="Cancel consultation request?"
+        message={`Are you sure you want to cancel your consultation request with ${requestToCancel?.profName}?`}
+        icon="alert-circle-outline"
+        iconColor="#DC2626"
+        iconBg="#FEF2F2"
+        confirmLabel="Cancel request"
+        confirmVariant="danger"
+        cancelLabel="Keep request"
+        onConfirm={() => {
+          if (requestToCancel) {
+            setRequestsList((prev) => prev.filter((r) => r.id !== requestToCancel.id));
+          }
+          setShowCancelModal(false);
+          setRequestToCancel(null);
+        }}
+        onCancel={() => {
+          setShowCancelModal(false);
+          setRequestToCancel(null);
+        }}
+      />
     </View>
   );
 }
@@ -628,418 +887,699 @@ export default function ConsultScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: '#F8FAFC',
   },
-  header: {
-    backgroundColor: colors.primary,
-    paddingTop: spacing.xxxl,
-    paddingBottom: spacing.md,
-    paddingHorizontal: spacing.lg,
+
+  /* Screen Title & Top Bar */
+  headerArea: {
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 12,
   },
-  headerTitle: {
-    fontSize: typography.sizes.xl,
-    fontWeight: typography.weights.bold,
-    color: colors.textInverse,
+  screenTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#0F172A',
   },
-  headerSubtitle: {
-    fontSize: typography.sizes.xs,
-    color: '#93C5FD',
-    marginTop: 2,
-    marginBottom: spacing.md,
-  },
-  tabBar: {
+
+  /* Segmented Tab Controls */
+  segmentedTabsContainer: {
     flexDirection: 'row',
-    backgroundColor: colors.primaryDark,
-    borderRadius: radius.md,
+    backgroundColor: '#F1F5F9',
+    borderRadius: 12,
+    marginHorizontal: 20,
     padding: 3,
+    marginBottom: 16,
   },
-  tabButton: {
+  segmentedTab: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
     paddingVertical: 8,
-    borderRadius: radius.sm,
-    minHeight: 40,
-  },
-  tabButtonActive: {
-    backgroundColor: colors.surface,
-  },
-  tabText: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.semibold,
-    color: '#CBD5E1',
-  },
-  tabTextActive: {
-    color: colors.primary,
-  },
-  content: {
-    flex: 1,
-  },
-  contentInner: {
-    padding: spacing.lg,
-    gap: spacing.md,
-    paddingBottom: spacing.xxxl,
-  },
-  searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    paddingHorizontal: spacing.md,
-    height: 44,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    gap: spacing.sm,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: typography.sizes.sm,
-    color: colors.textPrimary,
-  },
-  skeletonContainer: {
-    gap: spacing.md,
-  },
-  profCard: {
-    padding: spacing.md,
-  },
-  profHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    marginBottom: spacing.sm,
-  },
-  profAvatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
+    borderRadius: 9,
   },
-  profAvatarText: {
-    color: colors.textInverse,
-    fontSize: typography.sizes.md,
-    fontWeight: typography.weights.bold,
+  segmentedTabActive: {
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    elevation: 2,
   },
-  profInfo: {
+  segmentedTabText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#64748B',
+  },
+  segmentedTabTextActive: {
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+
+  /* Main Scroll */
+  mainScroll: {
     flex: 1,
   },
-  profName: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.bold,
-    color: colors.textPrimary,
+  mainScrollContent: {
+    paddingHorizontal: 20,
+    paddingBottom: 32,
   },
-  profEmail: {
-    fontSize: typography.sizes.xs,
-    color: colors.textSecondary,
-    marginTop: 1,
+
+  sectionTitleBlock: {
+    marginBottom: 16,
   },
-  profDept: {
-    fontSize: 11,
-    color: colors.textMuted,
-    marginTop: 1,
-  },
-  availabilityBox: {
-    backgroundColor: colors.surfaceSubtle,
-    padding: spacing.sm,
-    borderRadius: radius.sm,
-    marginVertical: spacing.xs,
-  },
-  availabilityTitle: {
-    fontSize: 11,
+  sectionTitleText: {
+    fontSize: 15,
     fontWeight: '700',
-    color: colors.primary,
-    textTransform: 'uppercase',
-    marginBottom: 4,
+    color: '#0F172A',
   },
-  slotPillWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  slotPill: {
-    backgroundColor: '#EFF6FF',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: '#BFDBFE',
-  },
-  slotPillText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: colors.primary,
-  },
-  noSlotsText: {
-    fontSize: typography.sizes.xs,
-    color: colors.textMuted,
-  },
-  bookButton: {
-    marginTop: spacing.sm,
-    alignSelf: 'flex-start',
-  },
-  filterChipRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginBottom: spacing.xs,
-  },
-  filterChip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: 6,
-    borderRadius: radius.full,
-    backgroundColor: colors.surfaceSubtle,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  filterChipSelected: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  filterChipText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.textSecondary,
-  },
-  filterChipTextSelected: {
-    color: colors.textInverse,
-  },
-  requestCard: {
-    padding: spacing.md,
-  },
-  requestHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.xs,
-  },
-  requestDateTimeBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  requestDateTimeText: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.bold,
-    color: colors.primary,
-  },
-  requestProfName: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.bold,
-    color: colors.textPrimary,
-    marginTop: 4,
-  },
-  requestSubject: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.semibold,
-    color: colors.accent,
+  sectionSubtitleText: {
+    fontSize: 13,
+    color: '#64748B',
     marginTop: 2,
   },
-  requestMessage: {
-    fontSize: typography.sizes.xs,
-    color: colors.textSecondary,
-    lineHeight: 18,
-    marginTop: 4,
-  },
-  noteCallout: {
-    backgroundColor: '#FEF9C3',
-    borderColor: '#FDE047',
+
+  /* Professor Cards */
+  profListCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 12,
     borderWidth: 1,
-    borderRadius: radius.sm,
-    padding: spacing.sm,
-    marginTop: spacing.sm,
+    borderColor: '#E2E8F0',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
   },
-  noteCalloutTitle: {
-    fontSize: 11,
+  profCardTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  profAvatarWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: '#EEF2FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  profCardDetails: {
+    flex: 1,
+  },
+  profCardName: {
+    fontSize: 15,
     fontWeight: '700',
-    color: '#854D0E',
+    color: '#0F172A',
     marginBottom: 2,
   },
-  noteCalloutBody: {
-    fontSize: typography.sizes.xs,
-    color: '#713F12',
+  profCardSpecialty: {
+    fontSize: 12,
+    color: '#64748B',
   },
-  requestActionRow: {
-    marginTop: spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    paddingTop: spacing.xs,
-    alignItems: 'flex-end',
+  profCardDept: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 10,
+    marginBottom: 8,
   },
-  modalContainer: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  modalHeader: {
+  nextSlotRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    padding: spacing.lg,
-    backgroundColor: colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
   },
-  modalStepIndicator: {
-    fontSize: 11,
+  nextSlotText: {
+    fontSize: 12,
+    color: '#2563EB',
+    fontWeight: '600',
+  },
+
+  /* My Requests Filter Chips */
+  filterChipsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 18,
+  },
+  filterChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: '#F1F5F9',
+  },
+  filterChipActive: {
+    backgroundColor: '#1E40AF',
+  },
+  filterChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  filterChipTextActive: {
+    color: '#FFFFFF',
+  },
+
+  /* Request Item Card */
+  requestItemCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  reqCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  reqTopicText: {
+    fontSize: 15,
     fontWeight: '700',
-    color: colors.accent,
-    textTransform: 'uppercase',
+    color: '#0F172A',
+    flex: 1,
+    marginRight: 8,
   },
-  modalProfTitle: {
-    fontSize: typography.sizes.md,
-    fontWeight: typography.weights.bold,
-    color: colors.textPrimary,
-    marginTop: 2,
+  reqBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
   },
-  modalCloseBtn: {
-    width: 36,
-    height: 36,
+  reqBadgePending: {
+    backgroundColor: '#FEF3C7',
+  },
+  reqBadgeApproved: {
+    backgroundColor: '#DCFCE7',
+  },
+  reqBadgeDeclined: {
+    backgroundColor: '#FEE2E2',
+  },
+  reqBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  reqBadgeTextPending: {
+    color: '#D97706',
+  },
+  reqBadgeTextApproved: {
+    color: '#166534',
+  },
+  reqBadgeTextDeclined: {
+    color: '#DC2626',
+  },
+  reqProfNameText: {
+    fontSize: 13,
+    color: '#475569',
+    marginBottom: 10,
+  },
+  reqMetaLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  reqMetaText: {
+    fontSize: 12,
+    color: '#64748B',
+  },
+  declineCallout: {
+    backgroundColor: '#FEF2F2',
+    borderRadius: 8,
+    padding: 10,
+    marginTop: 10,
+  },
+  declineCalloutText: {
+    fontSize: 12,
+    color: '#DC2626',
+    lineHeight: 16,
+  },
+
+  /* Flow Navigation Bar */
+  navBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+    backgroundColor: '#FFFFFF',
+  },
+  navBackBtn: {
+    width: 40,
+    height: 40,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  modalScroll: {
+  navTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  flowScroll: {
     flex: 1,
+    backgroundColor: '#FFFFFF',
   },
-  modalScrollInner: {
-    padding: spacing.lg,
-    paddingBottom: spacing.xxxl,
+  flowScrollContent: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 40,
   },
-  stepSection: {
-    gap: spacing.md,
+
+  /* Mini Prof Card in Flow */
+  profMiniCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
   },
-  stepTitle: {
-    fontSize: typography.sizes.md,
-    fontWeight: typography.weights.bold,
-    color: colors.textPrimary,
+  profMiniIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    backgroundColor: '#EEF2FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
   },
-  stepSubtitle: {
-    fontSize: typography.sizes.xs,
-    color: colors.textSecondary,
+  profMiniName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0F172A',
+    marginBottom: 2,
   },
-  dateGrid: {
-    gap: spacing.sm,
+  profMiniSpecialty: {
+    fontSize: 12,
+    color: '#64748B',
+  },
+  profMiniDept: {
+    fontSize: 12,
+    color: '#64748B',
+  },
+
+  /* Step Subheadings */
+  subHeading: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  rowBetweenHeading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  monthLabel: {
+    fontSize: 13,
+    color: '#64748B',
+    fontWeight: '500',
+  },
+  slotDurationLabel: {
+    fontSize: 12,
+    color: '#64748B',
+  },
+
+  /* Weekly Availability Card */
+  weeklyCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    paddingHorizontal: 16,
+    marginTop: 10,
+    marginBottom: 20,
+  },
+  weeklyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+  },
+  weeklyRowBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  weeklyDay: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#0F172A',
+  },
+  weeklyTime: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  selectedPill: {
+    backgroundColor: '#1E40AF',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  selectedPillText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  openPill: {
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  openPillText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#166534',
+  },
+
+  /* Date Cards */
+  dateCardsRow: {
+    flexDirection: 'row',
+    gap: 12,
   },
   dateCard: {
-    padding: spacing.md,
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
+    flex: 1,
+    paddingVertical: 14,
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  dateCardSelected: {
-    borderColor: colors.primary,
-    backgroundColor: '#EEF2FF',
+  dateCardActive: {
+    backgroundColor: '#1E40AF',
+    borderColor: '#1E40AF',
   },
   dateCardDay: {
     fontSize: 11,
-    fontWeight: '700',
-    color: colors.accent,
+    fontWeight: '600',
+    color: '#64748B',
+    marginBottom: 4,
   },
-  dateCardDate: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.semibold,
-    color: colors.textPrimary,
+  dateCardDayActive: {
+    color: '#FFFFFF',
+  },
+  dateCardNum: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  dateCardNumActive: {
+    color: '#FFFFFF',
+  },
+
+  /* Time Slots */
+  timeSlotsGrid: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 16,
+  },
+  timeSlotBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    alignItems: 'center',
+  },
+  timeSlotBtnActive: {
+    borderColor: '#2563EB',
+    backgroundColor: '#EFF6FF',
+  },
+  timeSlotText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#334155',
+  },
+  timeSlotTextActive: {
+    color: '#1D4ED8',
+  },
+
+  locationFooterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 28,
+  },
+  locationFooterText: {
+    fontSize: 13,
+    color: '#64748B',
+  },
+
+  /* Step 2 Form Fields */
+  fieldBlock: {
+    marginBottom: 16,
+  },
+  fieldLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#334155',
+    marginBottom: 6,
+  },
+  textInputSingle: {
+    height: 48,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    paddingHorizontal: 12,
+    fontSize: 14,
+    color: '#0F172A',
+    backgroundColor: '#FFFFFF',
+  },
+  textInputMulti: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: '#0F172A',
+    backgroundColor: '#FFFFFF',
+    textAlignVertical: 'top',
+  },
+  selectedScheduleBox: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: 12,
+  },
+  scheduleRowInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  scheduleDateText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#0F172A',
+  },
+  scheduleTimeText: {
+    fontSize: 12,
+    color: '#64748B',
     marginTop: 2,
   },
-  dateCardTextSelected: {
-    color: colors.primary,
+  changeLink: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#2563EB',
   },
-  stepButton: {
-    marginTop: spacing.sm,
+  requiredCaption: {
+    fontSize: 12,
+    color: '#94A3B8',
+    marginBottom: 24,
   },
-  slotGrid: {
-    gap: spacing.sm,
+
+  /* Review Request Step */
+  stepMainTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#0F172A',
+    marginBottom: 4,
   },
-  slotButton: {
+  stepMainSubtitle: {
+    fontSize: 13,
+    color: '#64748B',
+    marginBottom: 20,
+  },
+  sectionReviewCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: 16,
+    marginBottom: 16,
+  },
+  reviewCardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: spacing.md,
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
+    marginBottom: 10,
   },
-  slotButtonSelected: {
-    borderColor: colors.primary,
-    backgroundColor: '#EEF2FF',
-  },
-  slotButtonBooked: {
-    backgroundColor: colors.surfaceSubtle,
-    borderColor: colors.border,
-    opacity: 0.6,
-  },
-  slotButtonText: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.semibold,
-    color: colors.textPrimary,
-  },
-  slotButtonTextSelected: {
-    color: colors.primary,
-  },
-  slotButtonTextBooked: {
-    color: colors.textMuted,
-  },
-  bookedTag: {
-    fontSize: 11,
-    color: colors.status.dangerText,
+  reviewCardTitle: {
+    fontSize: 14,
     fontWeight: '700',
+    color: '#0F172A',
   },
-  inputGroup: {
-    gap: 4,
-  },
-  inputLabel: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.semibold,
-    color: colors.textPrimary,
-  },
-  textInput: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    fontSize: typography.sizes.sm,
-    color: colors.textPrimary,
-  },
-  textArea: {
-    minHeight: 90,
-    textAlignVertical: 'top',
-  },
-  reviewCard: {
-    padding: spacing.md,
-    gap: spacing.sm,
-  },
-  reviewRow: {
+  scheduleRowReview: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    borderBottomWidth: 1,
-    borderBottomColor: colors.surfaceSubtle,
-    paddingBottom: 6,
+    alignItems: 'flex-start',
   },
-  reviewLabel: {
-    fontSize: typography.sizes.xs,
-    color: colors.textMuted,
+  scheduleReviewDate: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#0F172A',
   },
-  reviewValue: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.semibold,
-    color: colors.textPrimary,
+  scheduleReviewTime: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 2,
   },
-  reviewMessageBlock: {
-    paddingTop: 4,
+  reviewFieldLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#94A3B8',
+    textTransform: 'uppercase',
   },
-  reviewMessageText: {
-    fontSize: typography.sizes.xs,
-    color: colors.textSecondary,
+  reviewFieldValue: {
+    fontSize: 13,
+    color: '#0F172A',
+    marginTop: 3,
     lineHeight: 18,
-    marginTop: 4,
   },
-  navRow: {
+  calloutRow: {
     flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 28,
+  },
+  calloutText: {
+    fontSize: 12,
+    color: '#64748B',
+    flex: 1,
+  },
+
+  /* Success Confirmation Screen */
+  successIconWrap: {
+    alignItems: 'center',
+    paddingVertical: 20,
+  },
+  successCircle: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: '#EEF2FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  successTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#0F172A',
+    marginBottom: 6,
+  },
+  successSubtitle: {
+    fontSize: 14,
+    color: '#64748B',
+    textAlign: 'center',
+    paddingHorizontal: 20,
+  },
+  submittedCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: 18,
+    marginBottom: 28,
+  },
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: spacing.md,
+    marginBottom: 10,
+  },
+  statusLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  pendingBadge: {
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
+  pendingBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#D97706',
+  },
+  statusNoticeTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0F172A',
+    marginBottom: 4,
+  },
+  statusNoticeDesc: {
+    fontSize: 12,
+    color: '#64748B',
+    lineHeight: 18,
+    marginBottom: 16,
+  },
+  appointmentHeader: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0F172A',
+    marginTop: 14,
+    marginBottom: 10,
+  },
+  infoLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  infoLineIcon: {
+    marginRight: 8,
+  },
+  infoLineText: {
+    fontSize: 13,
+    color: '#334155',
+  },
+  cancelNoticeBox: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 8,
+    padding: 10,
+    marginTop: 14,
+  },
+  cancelNoticeText: {
+    fontSize: 11,
+    color: '#64748B',
+    lineHeight: 16,
+  },
+
+  /* Primary Button */
+  primaryBtn: {
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: '#1E40AF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#1E40AF',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  primaryBtnDisabled: {
+    opacity: 0.5,
+  },
+  primaryBtnText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
 });

@@ -26,7 +26,7 @@ describe('Consultations Service', () => {
 
   describe('createConsultationRequest', () => {
     it('throws NotFoundError when slot does not exist', async () => {
-      vi.spyOn(consultationsRepository, 'findSlotById').mockResolvedValueOnce(null);
+      vi.spyOn(consultationsRepository, 'findSlotById').mockResolvedValueOnce(null as any);
 
       await expect(
         consultationsService.createConsultationRequest('student-1', {

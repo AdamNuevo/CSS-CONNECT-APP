@@ -6,6 +6,7 @@ import type { UserRole } from '@ccs-hub/shared';
 
 export interface JwtPayload {
   sub: string;
+  id: string;
   email: string;
   role: UserRole;
 }
@@ -31,8 +32,13 @@ export const authenticate = (
   const token = authHeader.substring(7).trim();
 
   try {
-    const decoded = jwt.verify(token, env.JWT_ACCESS_SECRET) as JwtPayload;
-    req.user = decoded;
+    const decoded = jwt.verify(token, env.JWT_ACCESS_SECRET) as any;
+    req.user = {
+      sub: decoded.sub,
+      id: decoded.id ?? decoded.sub,
+      email: decoded.email,
+      role: decoded.role,
+    };
     next();
   } catch (err) {
     if (err instanceof jwt.TokenExpiredError) {

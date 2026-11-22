@@ -8,12 +8,12 @@ import {
   Platform,
   ScrollView,
   StatusBar,
+  TextInput,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { Input } from '../../src/components/ui/Input';
-import { colors, spacing, typography, radius, shadows } from '../../src/theme/tokens';
 import { useAuth } from '../../src/context/AuthContext';
 
 export default function ForgotPasswordScreen() {
@@ -52,16 +52,22 @@ export default function ForgotPasswordScreen() {
     >
       <StatusBar barStyle="dark-content" />
 
-      {/* Top Bar with Safe Inset */}
-      <View style={[styles.topBar, { paddingTop: Math.max(insets.top, 20) + 8 }]}>
+      {/* ── TOP NAV BAR WITH "● CCS Hub" ─────────────────── */}
+      <View style={[styles.topBar, { paddingTop: Math.max(insets.top, 16) + 8 }]}>
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => router.back()}
           accessibilityLabel="Go back"
+          activeOpacity={0.7}
         >
-          <Ionicons name="arrow-back" size={22} color={colors.textPrimary} />
+          <Ionicons name="arrow-back" size={22} color="#0F172A" />
         </TouchableOpacity>
-        <Text style={styles.topBarTitle}>Account Recovery</Text>
+
+        <View style={styles.brandRow}>
+          <View style={styles.brandDot} />
+          <Text style={styles.brandText}>CCS Hub</Text>
+        </View>
+
         <View style={styles.backButton} />
       </View>
 
@@ -69,62 +75,71 @@ export default function ForgotPasswordScreen() {
         style={styles.scrollArea}
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingBottom: Math.max(insets.bottom, 20) + 24 },
+          { paddingBottom: Math.max(insets.bottom, 24) + 20 },
         ]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.card}>
-          <View style={styles.iconCircle}>
-            <Ionicons name="key-outline" size={28} color={colors.primary} />
-          </View>
-
-          <Text style={styles.title}>Forgot password?</Text>
+        <View style={styles.contentWrap}>
+          {/* Title & Subtitle */}
+          <Text style={styles.title}>Forgot your password?</Text>
           <Text style={styles.subtitle}>
-            Enter your registered QCU email address. We'll send you a temporary password valid for 24 hours.
+            Enter your QCU email and we will send you a new temporary password.
           </Text>
 
+          {/* Error Message */}
           {errorMessage ? (
             <View style={styles.errorBox}>
               <Ionicons
                 name="alert-circle-outline"
                 size={16}
-                color={colors.status.dangerText}
+                color="#DC2626"
                 style={{ marginRight: 6 }}
               />
               <Text style={styles.errorText}>{errorMessage}</Text>
             </View>
           ) : null}
 
-          <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>QCU Email</Text>
-            <Input
-              placeholder="juan.delacruz@qcu.edu.ph"
-              value={email}
-              onChangeText={setEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
-              leftIcon="mail-outline"
-            />
+          {/* Input Field */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>QCU email</Text>
+            <View style={styles.inputContainer}>
+              <Ionicons
+                name="mail-outline"
+                size={18}
+                color="#94A3B8"
+                style={styles.inputIcon}
+              />
+              <TextInput
+                style={styles.textInput}
+                placeholder="juan.delacruz@qcu.edu.ph"
+                placeholderTextColor="#94A3B8"
+                value={email}
+                onChangeText={(val) => {
+                  setEmail(val);
+                  if (errorMessage) setErrorMessage(null);
+                }}
+                autoCapitalize="none"
+                keyboardType="email-address"
+                autoCorrect={false}
+              />
+            </View>
           </View>
+        </View>
 
+        {/* Bottom CTA Button */}
+        <View style={styles.buttonContainer}>
           <TouchableOpacity
             style={[styles.primaryButton, loading && styles.buttonDisabled]}
             onPress={handleSubmit}
             activeOpacity={0.85}
             disabled={loading}
           >
-            <Text style={styles.primaryButtonText}>
-              {loading ? 'Sending instructions…' : 'Send temporary password'}
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.cancelButton}
-            onPress={() => router.back()}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.cancelText}>Back to Sign In</Text>
+            {loading ? (
+              <ActivityIndicator color="#FFFFFF" size="small" />
+            ) : (
+              <Text style={styles.primaryButtonText}>Send temporary password</Text>
+            )}
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -135,119 +150,135 @@ export default function ForgotPasswordScreen() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: '#FFFFFF',
   },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.md,
-    backgroundColor: colors.background,
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    backgroundColor: '#FFFFFF',
   },
   backButton: {
     width: 40,
     height: 40,
-    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
   },
-  topBarTitle: {
-    fontSize: typography.sizes.md,
-    fontWeight: typography.weights.semibold,
-    color: colors.textPrimary,
+  brandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
+  brandDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#1D4ED8',
+  },
+  brandText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+
   scrollArea: {
     flex: 1,
   },
   scrollContent: {
     flexGrow: 1,
-    justifyContent: 'center',
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.lg,
+    paddingHorizontal: 24,
+    paddingTop: 16,
+    justifyContent: 'space-between',
   },
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.xl,
-    padding: spacing.xl,
-    borderWidth: 1,
-    borderColor: colors.border,
-    ...shadows.card,
-  },
-  iconCircle: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: colors.accentMuted,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.lg,
-    alignSelf: 'center',
+  contentWrap: {
+    flex: 1,
   },
   title: {
-    fontSize: typography.sizes.xl,
-    fontWeight: typography.weights.bold,
-    color: colors.textPrimary,
-    textAlign: 'center',
-    marginBottom: spacing.xs,
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#0F172A',
+    marginBottom: 8,
   },
   subtitle: {
-    fontSize: typography.sizes.sm,
-    color: colors.textSecondary,
-    textAlign: 'center',
+    fontSize: 14,
+    color: '#64748B',
     lineHeight: 20,
-    marginBottom: spacing.xl,
+    marginBottom: 28,
   },
+
+  /* Error Box */
   errorBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.status.dangerBg,
-    borderColor: colors.status.dangerBorder,
+    backgroundColor: '#FEF2F2',
     borderWidth: 1,
-    borderRadius: radius.sm,
-    padding: spacing.md,
-    marginBottom: spacing.lg,
+    borderColor: '#FECACA',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginBottom: 20,
   },
   errorText: {
     flex: 1,
-    color: colors.status.dangerText,
-    fontSize: typography.sizes.sm,
+    fontSize: 13,
+    color: '#DC2626',
+    fontWeight: '500',
   },
-  fieldGroup: {
-    marginBottom: spacing.lg,
+
+  /* Input */
+  inputGroup: {
+    marginBottom: 24,
   },
-  fieldLabel: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.medium,
-    color: colors.textPrimary,
+  inputLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#334155',
     marginBottom: 6,
   },
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: 48,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 12,
+  },
+  inputIcon: {
+    marginRight: 10,
+  },
+  textInput: {
+    flex: 1,
+    fontSize: 14,
+    color: '#0F172A',
+    height: '100%',
+  },
+
+  /* Button */
+  buttonContainer: {
+    marginTop: 32,
+  },
   primaryButton: {
-    backgroundColor: colors.primary,
-    borderRadius: radius.md,
-    height: 50,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: '#1D4ED8',
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#1D4ED8',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 4,
   },
   buttonDisabled: {
-    opacity: 0.6,
+    opacity: 0.65,
   },
   primaryButtonText: {
-    color: colors.textInverse,
-    fontSize: typography.sizes.md,
-    fontWeight: typography.weights.semibold,
-  },
-  cancelButton: {
-    marginTop: spacing.md,
-    alignItems: 'center',
-    paddingVertical: spacing.sm,
-  },
-  cancelText: {
-    fontSize: typography.sizes.sm,
-    color: colors.textSecondary,
-    fontWeight: typography.weights.medium,
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
 });

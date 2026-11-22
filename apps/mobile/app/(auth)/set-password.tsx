@@ -8,22 +8,26 @@ import {
   KeyboardAvoidingView,
   Platform,
   StatusBar,
+  TextInput,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { Input } from '../../src/components/ui/Input';
-import { colors, spacing, typography, radius, shadows } from '../../src/theme/tokens';
 import { useAuth } from '../../src/context/AuthContext';
 
 export default function SetPasswordScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { setNewPassword, signOut } = useAuth();
+  const { setNewPassword } = useAuth();
 
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPasswordInput] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showCurrent, setShowCurrent] = useState(false);
+  const [showNew, setShowNew] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -59,10 +63,22 @@ export default function SetPasswordScreen() {
     >
       <StatusBar barStyle="dark-content" />
 
-      {/* Top Bar */}
-      <View style={[styles.topBar, { paddingTop: Math.max(insets.top, 20) + 8 }]}>
-        <View style={styles.backButton} />
-        <Text style={styles.topBarTitle}>Security Setup</Text>
+      {/* ── TOP NAV BAR WITH "● CCS Hub" ─────────────────── */}
+      <View style={[styles.topBar, { paddingTop: Math.max(insets.top, 16) + 8 }]}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => router.back()}
+          accessibilityLabel="Go back"
+          activeOpacity={0.7}
+        >
+          <Ionicons name="arrow-back" size={22} color="#0F172A" />
+        </TouchableOpacity>
+
+        <View style={styles.brandRow}>
+          <View style={styles.brandDot} />
+          <Text style={styles.brandText}>CCS Hub</Text>
+        </View>
+
         <View style={styles.backButton} />
       </View>
 
@@ -70,15 +86,15 @@ export default function SetPasswordScreen() {
         style={styles.scrollArea}
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingBottom: Math.max(insets.bottom, 20) + 24 },
+          { paddingBottom: Math.max(insets.bottom, 24) + 20 },
         ]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.card}>
-          <Text style={styles.title}>Set new password</Text>
+        <View style={styles.contentWrap}>
+          <Text style={styles.title}>Set your password</Text>
           <Text style={styles.subtitle}>
-            Please replace your temporary password with a permanent, secure password.
+            Replace the temporary password before you continue.
           </Text>
 
           {errorMessage ? (
@@ -86,68 +102,122 @@ export default function SetPasswordScreen() {
               <Ionicons
                 name="alert-circle-outline"
                 size={16}
-                color={colors.status.dangerText}
+                color="#DC2626"
                 style={{ marginRight: 6 }}
               />
               <Text style={styles.errorText}>{errorMessage}</Text>
             </View>
           ) : null}
 
-          <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>Current / Temporary Password</Text>
-            <Input
-              placeholder="Enter current password"
-              value={currentPassword}
-              onChangeText={setCurrentPassword}
-              isPassword
-              leftIcon="lock-closed-outline"
-            />
+          {/* Temporary Password */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>Temporary password</Text>
+            <View style={styles.inputContainer}>
+              <Ionicons
+                name="lock-closed-outline"
+                size={18}
+                color="#94A3B8"
+                style={styles.inputIcon}
+              />
+              <TextInput
+                style={styles.textInput}
+                placeholder="From your email"
+                placeholderTextColor="#94A3B8"
+                value={currentPassword}
+                onChangeText={setCurrentPassword}
+                secureTextEntry={!showCurrent}
+                autoCapitalize="none"
+              />
+              <TouchableOpacity
+                onPress={() => setShowCurrent((prev) => !prev)}
+                style={styles.showButton}
+              >
+                <Text style={styles.showButtonText}>{showCurrent ? 'Hide' : 'Show'}</Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
-          <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>New Password</Text>
-            <Input
-              placeholder="Create new password"
-              value={newPassword}
-              onChangeText={setNewPasswordInput}
-              isPassword
-              leftIcon="key-outline"
-            />
+          {/* New Password */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>New password</Text>
+            <View style={styles.inputContainer}>
+              <Ionicons
+                name="lock-closed-outline"
+                size={18}
+                color="#94A3B8"
+                style={styles.inputIcon}
+              />
+              <TextInput
+                style={styles.textInput}
+                placeholder="Create a new password"
+                placeholderTextColor="#94A3B8"
+                value={newPassword}
+                onChangeText={setNewPasswordInput}
+                secureTextEntry={!showNew}
+                autoCapitalize="none"
+              />
+              <TouchableOpacity
+                onPress={() => setShowNew((prev) => !prev)}
+                style={styles.showButton}
+              >
+                <Text style={styles.showButtonText}>{showNew ? 'Hide' : 'Show'}</Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
-          <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>Confirm New Password</Text>
-            <Input
-              placeholder="Re-enter new password"
-              value={confirmPassword}
-              onChangeText={setConfirmPassword}
-              isPassword
-              leftIcon="key-outline"
-            />
+          {/* Confirm New Password */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>Confirm new password</Text>
+            <View style={styles.inputContainer}>
+              <Ionicons
+                name="lock-closed-outline"
+                size={18}
+                color="#94A3B8"
+                style={styles.inputIcon}
+              />
+              <TextInput
+                style={styles.textInput}
+                placeholder="Re-enter new password"
+                placeholderTextColor="#94A3B8"
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                secureTextEntry={!showConfirm}
+                autoCapitalize="none"
+              />
+              <TouchableOpacity
+                onPress={() => setShowConfirm((prev) => !prev)}
+                style={styles.showButton}
+              >
+                <Text style={styles.showButtonText}>{showConfirm ? 'Hide' : 'Show'}</Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
-          {/* Checklist */}
-          <View style={styles.rulesContainer}>
-            <Text style={styles.rulesHeader}>Password requirements:</Text>
-            <RequirementItem satisfied={hasMinLength} label="At least 8 characters" />
-            <RequirementItem satisfied={hasUppercase} label="At least one uppercase letter" />
-            <RequirementItem satisfied={hasNumber} label="At least one number" />
-            <RequirementItem satisfied={passwordsMatch} label="Passwords match" />
+          {/* Password Requirements Checklist */}
+          <View style={styles.rulesCard}>
+            <Text style={styles.rulesHeader}>Your password must have:</Text>
+            <RequirementRow satisfied={hasMinLength} label="At least 8 characters" />
+            <RequirementRow satisfied={hasUppercase} label="One uppercase letter" />
+            <RequirementRow satisfied={hasNumber} label="One number" />
           </View>
+        </View>
 
+        {/* Update Password CTA */}
+        <View style={styles.buttonContainer}>
           <TouchableOpacity
-            style={[styles.primaryButton, (!isFormValid || loading) && styles.buttonDisabled]}
+            style={[
+              styles.primaryButton,
+              (!isFormValid || loading) && styles.buttonDisabled,
+            ]}
             onPress={handleSubmit}
             activeOpacity={0.85}
             disabled={!isFormValid || loading}
           >
-            <Text style={styles.primaryButtonText}>
-              {loading ? 'Updating…' : 'Set new password'}
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity onPress={signOut} style={styles.signOutButton} activeOpacity={0.7}>
-            <Text style={styles.signOutText}>Sign out</Text>
+            {loading ? (
+              <ActivityIndicator color="#FFFFFF" size="small" />
+            ) : (
+              <Text style={styles.primaryButtonText}>Update password</Text>
+            )}
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -155,147 +225,187 @@ export default function SetPasswordScreen() {
   );
 }
 
-function RequirementItem({ satisfied, label }: { satisfied: boolean; label: string }) {
+function RequirementRow({ satisfied, label }: { satisfied: boolean; label: string }) {
   return (
-    <View style={ruleStyles.row}>
+    <View style={styles.ruleRow}>
       <Ionicons
         name={satisfied ? 'checkmark-circle' : 'ellipse-outline'}
-        size={15}
-        color={satisfied ? colors.status.successText : colors.textMuted}
+        size={16}
+        color={satisfied ? '#059669' : '#94A3B8'}
         style={{ marginRight: 8 }}
       />
-      <Text style={[ruleStyles.text, satisfied && ruleStyles.satisfied]}>{label}</Text>
+      <Text style={[styles.ruleText, satisfied && styles.ruleTextSatisfied]}>
+        {label}
+      </Text>
     </View>
   );
 }
 
-const ruleStyles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  text: {
-    fontSize: typography.sizes.xs,
-    color: colors.textSecondary,
-  },
-  satisfied: {
-    color: colors.status.successText,
-    fontWeight: typography.weights.medium,
-  },
-});
-
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: '#FFFFFF',
   },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.md,
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    backgroundColor: '#FFFFFF',
   },
   backButton: {
     width: 40,
     height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  topBarTitle: {
-    fontSize: typography.sizes.md,
-    fontWeight: typography.weights.semibold,
-    color: colors.textPrimary,
+  brandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
+  brandDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#1D4ED8',
+  },
+  brandText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+
   scrollArea: {
     flex: 1,
   },
   scrollContent: {
     flexGrow: 1,
-    justifyContent: 'center',
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.lg,
+    paddingHorizontal: 24,
+    paddingTop: 16,
+    justifyContent: 'space-between',
   },
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.xl,
-    padding: spacing.xl,
-    borderWidth: 1,
-    borderColor: colors.border,
-    ...shadows.card,
+  contentWrap: {
+    flex: 1,
   },
   title: {
-    fontSize: typography.sizes.xl,
-    fontWeight: typography.weights.bold,
-    color: colors.textPrimary,
-    marginBottom: spacing.xs,
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#0F172A',
+    marginBottom: 8,
   },
   subtitle: {
-    fontSize: typography.sizes.sm,
-    color: colors.textSecondary,
-    lineHeight: 20,
-    marginBottom: spacing.xl,
+    fontSize: 14,
+    color: '#64748B',
+    marginBottom: 24,
   },
+
   errorBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.status.dangerBg,
-    borderColor: colors.status.dangerBorder,
+    backgroundColor: '#FEF2F2',
     borderWidth: 1,
-    borderRadius: radius.sm,
-    padding: spacing.md,
-    marginBottom: spacing.lg,
+    borderColor: '#FECACA',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginBottom: 18,
   },
   errorText: {
     flex: 1,
-    color: colors.status.dangerText,
-    fontSize: typography.sizes.sm,
+    fontSize: 13,
+    color: '#DC2626',
+    fontWeight: '500',
   },
-  fieldGroup: {
-    marginBottom: spacing.md,
+
+  inputGroup: {
+    marginBottom: 16,
   },
-  fieldLabel: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.medium,
-    color: colors.textPrimary,
+  inputLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#334155',
     marginBottom: 6,
   },
-  rulesContainer: {
-    backgroundColor: colors.surfaceSubtle,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    marginTop: spacing.xs,
-    marginBottom: spacing.xl,
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: 48,
+    borderRadius: 10,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 12,
+  },
+  inputIcon: {
+    marginRight: 10,
+  },
+  textInput: {
+    flex: 1,
+    fontSize: 14,
+    color: '#0F172A',
+    height: '100%',
+  },
+  showButton: {
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+  },
+  showButtonText: {
+    fontSize: 13,
+    color: '#64748B',
+    fontWeight: '500',
+  },
+
+  /* Rules Box */
+  rulesCard: {
+    backgroundColor: '#F0F6FE',
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 8,
+    marginBottom: 20,
   },
   rulesHeader: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.semibold,
-    color: colors.textPrimary,
-    marginBottom: spacing.xs,
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#1E293B',
+    marginBottom: 10,
+  },
+  ruleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  ruleText: {
+    fontSize: 13,
+    color: '#64748B',
+  },
+  ruleTextSatisfied: {
+    color: '#0F172A',
+    fontWeight: '500',
+  },
+
+  buttonContainer: {
+    marginTop: 20,
   },
   primaryButton: {
-    backgroundColor: colors.primary,
-    borderRadius: radius.md,
-    height: 50,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: '#1D4ED8',
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#1D4ED8',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 4,
   },
   buttonDisabled: {
-    opacity: 0.5,
+    opacity: 0.6,
   },
   primaryButtonText: {
-    color: colors.textInverse,
-    fontSize: typography.sizes.md,
-    fontWeight: typography.weights.semibold,
-  },
-  signOutButton: {
-    marginTop: spacing.md,
-    alignItems: 'center',
-    paddingVertical: spacing.sm,
-  },
-  signOutText: {
-    fontSize: typography.sizes.sm,
-    color: colors.textMuted,
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
 });

@@ -110,6 +110,12 @@ export default function EvaluationsScreen() {
         <Text style={styles.headerTitle}>Faculty Evaluation</Text>
       </View>
 
+      {/* ── UNDER DEVELOPMENT BANNER ─────────────────────────── */}
+      <View style={styles.devBanner}>
+        <Ionicons name="construct-outline" size={15} color="#92400E" />
+        <Text style={styles.devBannerText}>🚧 Faculty Evaluation — Under Development</Text>
+      </View>
+
       <ScrollView
         style={styles.content}
         contentContainerStyle={styles.contentInner}
@@ -545,5 +551,20 @@ const styles = StyleSheet.create({
   },
   modalActionRow: {
     marginTop: spacing.md,
+  },
+  devBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#FEF3C7',
+    borderBottomWidth: 1,
+    borderBottomColor: '#FDE68A',
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+  },
+  devBannerText: {
+    fontSize: 12,
+    fontWeight: '600' as const,
+    color: '#92400E',
   },
 });

@@ -108,7 +108,7 @@ describe('Announcements Service', () => {
 
   describe('getAnnouncementById', () => {
     it('throws NotFoundError when announcement does not exist', async () => {
-      vi.spyOn(announcementsRepository, 'findById').mockResolvedValueOnce(null);
+      vi.spyOn(announcementsRepository, 'findById').mockResolvedValueOnce(null as any);
 
       await expect(
         announcementsService.getAnnouncementById('non-existent-id')

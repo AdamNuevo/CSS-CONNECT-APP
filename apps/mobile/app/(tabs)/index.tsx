@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -15,17 +15,18 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, radius, typography, shadows } from '../../src/theme/tokens';
 import { Skeleton } from '../../src/components/ui/Skeleton';
 import { EmptyState } from '../../src/components/ui/EmptyState';
+import { ConfirmModal } from '../../src/components/ui/ConfirmModal';
 import { mobileApi, type DashboardData } from '../../src/services/dashboard';
 
 const QUICK_ACTIONS = [
   { label: 'Schedule', icon: 'calendar-outline' as const, route: '/(tabs)/schedule' as const, tint: '#3B82F6', bg: '#EFF6FF' },
   { label: 'Consult', icon: 'chatbubbles-outline' as const, route: '/(tabs)/consult' as const, tint: '#8B5CF6', bg: '#F5F3FF' },
   { label: 'Grades', icon: 'school-outline' as const, route: '/grades' as const, tint: '#10B981', bg: '#ECFDF5' },
-  { label: 'Evaluation', icon: 'clipboard-outline' as const, route: '/evaluations' as const, tint: '#F59E0B', bg: '#FFFBEB' },
+  { label: 'Evaluation', icon: 'clipboard-outline' as const, route: '/evaluations' as const, tint: '#F59E0B', bg: '#FFFBEB', isDev: true },
   { label: 'News', icon: 'megaphone-outline' as const, route: '/announcements' as const, tint: '#EF4444', bg: '#FEF2F2' },
   { label: 'Organizations', icon: 'people-outline' as const, route: '/organizations' as const, tint: '#06B6D4', bg: '#ECFEFF' },
-  { label: 'Campus Map', icon: 'map-outline' as const, route: '/campus-map' as const, tint: '#6366F1', bg: '#EEF2FF' },
-  { label: 'Research', icon: 'book-outline' as const, route: '/(tabs)/research' as const, tint: '#14B8A6', bg: '#F0FDFA' },
+  { label: 'Campus Map', icon: 'map-outline' as const, route: '/campus-map' as const, tint: '#6366F1', bg: '#EEF2FF', isDev: true },
+  { label: 'Research', icon: 'book-outline' as const, route: '/research' as const, tint: '#14B8A6', bg: '#F0FDFA' },
 ];
 
 function getGreeting(): string {
@@ -46,6 +47,31 @@ function getFormattedDate(): string {
 export default function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+
+  const [devModal, setDevModal] = useState<{
+    visible: boolean;
+    title: string;
+    message: string;
+    route: string;
+  }>({
+    visible: false,
+    title: '',
+    message: '',
+    route: '',
+  });
+
+  const handleActionPress = (item: (typeof QUICK_ACTIONS)[number]) => {
+    if ('isDev' in item && item.isDev) {
+      setDevModal({
+        visible: true,
+        title: 'Under Development',
+        message: `${item.label} is currently under development and will be available in an upcoming update.`,
+        route: item.route,
+      });
+    } else {
+      router.push(item.route as any);
+    }
+  };
 
   const { data, isLoading, isError, refetch, isRefetching } = useQuery<DashboardData>({
     queryKey: ['dashboard'],
@@ -165,7 +191,12 @@ export default function HomeScreen() {
               <TouchableOpacity
                 style={styles.navigateButton}
                 onPress={() =>
-                  router.push(`/campus-map?room=${encodeURIComponent(nextClass.room)}` as any)
+                  setDevModal({
+                    visible: true,
+                    title: 'Under Development',
+                    message: 'Campus Map navigation is currently under development.',
+                    route: `/campus-map?room=${encodeURIComponent(nextClass.room)}`,
+                  })
                 }
                 activeOpacity={0.85}
               >
@@ -203,7 +234,7 @@ export default function HomeScreen() {
             <TouchableOpacity
               key={item.label}
               style={styles.gridTile}
-              onPress={() => router.push(item.route as any)}
+              onPress={() => handleActionPress(item)}
               activeOpacity={0.7}
             >
               <View style={[styles.tileIconCircle, { backgroundColor: item.bg }]}>
@@ -222,7 +253,7 @@ export default function HomeScreen() {
         <View style={styles.sectionContainer}>
           <View style={styles.sectionHeaderRow}>
             <Text style={styles.sectionTitle}>Upcoming event</Text>
-            <TouchableOpacity onPress={() => router.push('/(tabs)/events')}>
+            <TouchableOpacity onPress={() => router.push('/events')}>
               <Text style={styles.linkText}>View all</Text>
             </TouchableOpacity>
           </View>
@@ -287,6 +318,20 @@ export default function HomeScreen() {
           ))}
         </View>
       )}
+
+      {/* Under Development Popup */}
+      <ConfirmModal
+        visible={devModal.visible}
+        title={devModal.title}
+        message={devModal.message}
+        icon="construct-outline"
+        iconColor="#D97706"
+        iconBg="#FEF3C7"
+        confirmLabel="Close"
+        cancelLabel=""
+        onConfirm={() => setDevModal({ visible: false, title: '', message: '', route: '' })}
+        onCancel={() => setDevModal({ visible: false, title: '', message: '', route: '' })}
+      />
     </ScrollView>
   );
 }

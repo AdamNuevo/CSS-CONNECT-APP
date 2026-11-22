@@ -2,6 +2,7 @@
   "name": "ccs-hub",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@9.15.4",
   "scripts": {
     "dev:api": "pnpm --filter @ccs-hub/api dev",
     "dev:web": "pnpm --filter @ccs-hub/web dev",
@@ -12,5 +13,12 @@
   },
   "devDependencies": {
     "typescript": "^5.4.5"
+  },
+  "pnpm": {
+    "overrides": {
+      "react-native-reanimated": "~4.7.1",
+      "react-native-worklets": "~0.13.0",
+      "react-native-svg": "15.16.0"
+    }
   }
 }

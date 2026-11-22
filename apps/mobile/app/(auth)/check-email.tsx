@@ -10,7 +10,6 @@ import {
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, spacing, typography, radius, shadows } from '../../src/theme/tokens';
 import { useAuth } from '../../src/context/AuthContext';
 
 export default function CheckEmailScreen() {
@@ -38,7 +37,7 @@ export default function CheckEmailScreen() {
     try {
       await requestTemporaryPassword(email);
       setCooldown(60);
-      setStatusMessage('A new temporary password has been dispatched.');
+      setStatusMessage('A new temporary password has been sent.');
     } catch (err: any) {
       setStatusMessage(
         err.response?.data?.error?.message ||
@@ -53,16 +52,22 @@ export default function CheckEmailScreen() {
     <View style={styles.root}>
       <StatusBar barStyle="dark-content" />
 
-      {/* Top Bar */}
-      <View style={[styles.topBar, { paddingTop: Math.max(insets.top, 20) + 8 }]}>
+      {/* ── TOP NAV BAR WITH "● CCS Hub" ─────────────────── */}
+      <View style={[styles.topBar, { paddingTop: Math.max(insets.top, 16) + 8 }]}>
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => router.back()}
           accessibilityLabel="Go back"
+          activeOpacity={0.7}
         >
-          <Ionicons name="arrow-back" size={22} color={colors.textPrimary} />
+          <Ionicons name="arrow-back" size={22} color="#0F172A" />
         </TouchableOpacity>
-        <Text style={styles.topBarTitle}>Verification</Text>
+
+        <View style={styles.brandRow}>
+          <View style={styles.brandDot} />
+          <Text style={styles.brandText}>CCS Hub</Text>
+        </View>
+
         <View style={styles.backButton} />
       </View>
 
@@ -70,26 +75,44 @@ export default function CheckEmailScreen() {
         style={styles.scrollArea}
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingBottom: Math.max(insets.bottom, 20) + 24 },
+          { paddingBottom: Math.max(insets.bottom, 24) + 20 },
         ]}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.card}>
+        <View style={styles.contentWrap}>
+          {/* Circular Mail Icon */}
           <View style={styles.iconCircle}>
-            <Ionicons name="mail-open-outline" size={32} color={colors.primary} />
+            <Ionicons name="mail-outline" size={32} color="#2563EB" />
           </View>
 
+          {/* Title & Subtitle */}
           <Text style={styles.title}>Check your email</Text>
-          <Text style={styles.description}>
-            If your account is registered, a temporary password was sent to:
+          <Text style={styles.subtitle}>
+            If your details match the CCS list, we sent a temporary password to your QCU email. It expires in 24 hours.
           </Text>
-          <Text style={styles.emailBadge}>{email || 'your QCU email'}</Text>
 
-          {/* Steps */}
-          <View style={styles.stepsContainer}>
-            <StepItem number={1} title="Check inbox or spam folder" desc="Look for an email from CCS Hub." />
-            <StepItem number={2} title="Sign in with temporary password" desc="Use your temporary password to log in." />
-            <StepItem number={3} title="Create your new password" desc="Choose a secure permanent password." />
+          {/* 3 Step Instruction Card */}
+          <View style={styles.stepsCard}>
+            <View style={styles.stepRow}>
+              <View style={styles.stepBadge}>
+                <Text style={styles.stepBadgeText}>1</Text>
+              </View>
+              <Text style={styles.stepText}>Open the email from CCS Connect.</Text>
+            </View>
+
+            <View style={styles.stepRow}>
+              <View style={styles.stepBadge}>
+                <Text style={styles.stepBadgeText}>2</Text>
+              </View>
+              <Text style={styles.stepText}>Sign in with the temporary password.</Text>
+            </View>
+
+            <View style={[styles.stepRow, { marginBottom: 0 }]}>
+              <View style={styles.stepBadge}>
+                <Text style={styles.stepBadgeText}>3</Text>
+              </View>
+              <Text style={styles.stepText}>Create your own password.</Text>
+            </View>
           </View>
 
           {statusMessage ? (
@@ -97,7 +120,10 @@ export default function CheckEmailScreen() {
               <Text style={styles.statusText}>{statusMessage}</Text>
             </View>
           ) : null}
+        </View>
 
+        {/* Buttons */}
+        <View style={styles.footerWrap}>
           <TouchableOpacity
             style={styles.primaryButton}
             onPress={() => router.replace('/(auth)/sign-in')}
@@ -117,7 +143,7 @@ export default function CheckEmailScreen() {
                 ? `Resend available in ${cooldown}s`
                 : resending
                 ? 'Sending…'
-                : 'Didn’t receive it? Resend email'}
+                : "Didn't get it? Resend email"}
             </Text>
           </TouchableOpacity>
         </View>
@@ -126,180 +152,162 @@ export default function CheckEmailScreen() {
   );
 }
 
-function StepItem({ number, title, desc }: { number: number; title: string; desc: string }) {
-  return (
-    <View style={stepStyles.row}>
-      <View style={stepStyles.badge}>
-        <Text style={stepStyles.badgeText}>{number}</Text>
-      </View>
-      <View style={stepStyles.textGroup}>
-        <Text style={stepStyles.title}>{title}</Text>
-        <Text style={stepStyles.desc}>{desc}</Text>
-      </View>
-    </View>
-  );
-}
-
-const stepStyles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: spacing.md,
-  },
-  badge: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: spacing.md,
-    marginTop: 2,
-  },
-  badgeText: {
-    color: colors.textInverse,
-    fontSize: 12,
-    fontWeight: typography.weights.bold,
-  },
-  textGroup: {
-    flex: 1,
-  },
-  title: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.semibold,
-    color: colors.textPrimary,
-  },
-  desc: {
-    fontSize: typography.sizes.xs,
-    color: colors.textSecondary,
-    marginTop: 1,
-  },
-});
-
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: '#FFFFFF',
   },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.md,
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    backgroundColor: '#FFFFFF',
   },
   backButton: {
     width: 40,
     height: 40,
-    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
   },
-  topBarTitle: {
-    fontSize: typography.sizes.md,
-    fontWeight: typography.weights.semibold,
-    color: colors.textPrimary,
+  brandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
+  brandDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#1D4ED8',
+  },
+  brandText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+
   scrollArea: {
     flex: 1,
   },
   scrollContent: {
     flexGrow: 1,
-    justifyContent: 'center',
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.lg,
+    paddingHorizontal: 24,
+    paddingTop: 24,
+    justifyContent: 'space-between',
   },
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.xl,
-    padding: spacing.xl,
-    borderWidth: 1,
-    borderColor: colors.border,
-    ...shadows.card,
+  contentWrap: {
+    alignItems: 'center',
   },
   iconCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: colors.accentMuted,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: '#EEF2FF',
     alignItems: 'center',
     justifyContent: 'center',
-    alignSelf: 'center',
-    marginBottom: spacing.lg,
+    marginBottom: 24,
   },
   title: {
-    fontSize: typography.sizes.xl,
-    fontWeight: typography.weights.bold,
-    color: colors.textPrimary,
-    textAlign: 'center',
-    marginBottom: spacing.xs,
-  },
-  description: {
-    fontSize: typography.sizes.sm,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 20,
-  },
-  emailBadge: {
-    alignSelf: 'center',
-    backgroundColor: colors.surfaceSubtle,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 4,
-    borderRadius: radius.full,
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.semibold,
-    color: colors.primary,
-    marginTop: spacing.sm,
-    marginBottom: spacing.xl,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  stepsContainer: {
-    backgroundColor: colors.surfaceSubtle,
-    borderRadius: radius.md,
-    padding: spacing.lg,
-    marginBottom: spacing.xl,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  statusBox: {
-    backgroundColor: colors.status.infoBg,
-    borderRadius: radius.sm,
-    padding: spacing.md,
-    marginBottom: spacing.lg,
-  },
-  statusText: {
-    fontSize: typography.sizes.xs,
-    color: colors.status.infoText,
-    fontWeight: typography.weights.medium,
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#0F172A',
+    marginBottom: 10,
     textAlign: 'center',
   },
-  primaryButton: {
-    backgroundColor: colors.primary,
-    borderRadius: radius.md,
-    height: 50,
+  subtitle: {
+    fontSize: 14,
+    color: '#64748B',
+    lineHeight: 21,
+    textAlign: 'center',
+    paddingHorizontal: 8,
+    marginBottom: 28,
+  },
+
+  /* Steps Card */
+  stepsCard: {
+    width: '100%',
+    backgroundColor: '#F0F6FE',
+    borderRadius: 14,
+    padding: 18,
+    marginBottom: 20,
+  },
+  stepRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  stepBadge: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#2563EB',
     alignItems: 'center',
     justifyContent: 'center',
+    marginRight: 12,
+  },
+  stepBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  stepText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#1E293B',
+    lineHeight: 18,
+  },
+
+  statusBox: {
+    width: '100%',
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 16,
+  },
+  statusText: {
+    fontSize: 13,
+    color: '#059669',
+    textAlign: 'center',
+    fontWeight: '500',
+  },
+
+  /* Footer */
+  footerWrap: {
+    marginTop: 32,
+    width: '100%',
+  },
+  primaryButton: {
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: '#1D4ED8',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#1D4ED8',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 4,
   },
   primaryButtonText: {
-    color: colors.textInverse,
-    fontSize: typography.sizes.md,
-    fontWeight: typography.weights.semibold,
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
   resendButton: {
-    marginTop: spacing.md,
+    marginTop: 18,
     alignItems: 'center',
-    paddingVertical: spacing.sm,
   },
   resendText: {
-    fontSize: typography.sizes.sm,
-    color: colors.accent,
-    fontWeight: typography.weights.medium,
+    fontSize: 13,
+    color: '#2563EB',
+    fontWeight: '500',
   },
   resendDisabled: {
-    color: colors.textMuted,
+    color: '#94A3B8',
   },
 });

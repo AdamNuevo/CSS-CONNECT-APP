@@ -14,7 +14,7 @@ interface AuthContextType {
   isLoading: boolean;
   mustChangePassword: boolean;
   savedEmail: string | null;
-  signIn: (input: LoginInput) => Promise<void>;
+  signIn: (input: LoginInput) => Promise<{ mustChangePassword: boolean }>;
   signOut: () => Promise<void>;
   requestTemporaryPassword: (email: string) => Promise<{ message: string }>;
   setNewPassword: (input: ChangePasswordInput) => Promise<void>;
@@ -61,7 +61,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     loadSession();
   }, []);
 
-  const signIn = async (input: LoginInput): Promise<void> => {
+  const signIn = async (input: LoginInput): Promise<{ mustChangePassword: boolean }> => {
     const res = await api.post<LoginResponse>('/auth/login', input);
     const { user: profile, tokens, mustChangePassword: needsPasswordChange } = res.data;
 
@@ -78,6 +78,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     setUser(profile);
     setMustChangePassword(needsPasswordChange);
+    return { mustChangePassword: needsPasswordChange };
   };
 
   const signOut = async (): Promise<void> => {

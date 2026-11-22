@@ -135,7 +135,7 @@ describe('Events Service', () => {
     });
 
     it('throws NotFoundError for invalid or unregistered QR payload', async () => {
-      vi.spyOn(eventsRepository, 'findRegistrationByQrPayload').mockResolvedValueOnce(null);
+      vi.spyOn(eventsRepository, 'findRegistrationByQrPayload').mockResolvedValueOnce(null as any);
 
       await expect(
         eventsService.validateAttendance(

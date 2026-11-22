@@ -75,7 +75,7 @@ describe('Organizations Service', () => {
   describe('apply', () => {
     it('creates a pending membership application successfully', async () => {
       vi.spyOn(orgRepo, 'getOrganizationById').mockResolvedValueOnce(mockOrg);
-      vi.spyOn(orgRepo, 'findMembership').mockResolvedValueOnce(null);
+      vi.spyOn(orgRepo, 'findMembership').mockResolvedValueOnce(null as any);
       vi.spyOn(orgRepo, 'createMembership').mockResolvedValueOnce({
         id: 'mem-new',
         organizationId: 'org-1',
@@ -261,6 +261,7 @@ describe('Organizations Service', () => {
         organizationsService.createAnnouncement(studentUser, 'org-1', {
           title: 'Unauthorized Announcement',
           body: 'Should not pass',
+          isPinned: false,
         })
       ).rejects.toThrow(ForbiddenError);
     });
