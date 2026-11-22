@@ -1,4 +1,4 @@
-import axios, { type AxiosRequestConfig } from 'axios';
+import axios, { type InternalAxiosRequestConfig } from 'axios';
 import { storage } from './storage';
 
 declare const process: { env: { [key: string]: string | undefined } };
@@ -48,7 +48,7 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
-    const originalRequest = error.config as AxiosRequestConfig & { _retry?: boolean };
+    const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
 
     // Do not attempt refresh on auth endpoints to prevent loops
     if (
@@ -83,7 +83,7 @@ api.interceptors.response.use(
           refreshToken,
         });
 
-        const newTokens = response.data;
+        const newTokens = response.data as { accessToken: string; refreshToken: string };
         await storage.saveTokens(newTokens.accessToken, newTokens.refreshToken);
 
         processQueue(null, newTokens.accessToken);
