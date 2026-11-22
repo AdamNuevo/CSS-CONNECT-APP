@@ -44,10 +44,13 @@ export default function SignInScreen() {
         router.replace('/(tabs)');
       }
     } catch (err: any) {
-      const serverMessage =
-        err.response?.data?.error?.message ||
-        'Incorrect email or password. Check your details and try again.';
-      setErrorMessage(serverMessage);
+      let message = 'Incorrect email or password. Check your details and try again.';
+      if (err.response?.data?.error?.message) {
+        message = err.response.data.error.message;
+      } else if (!err.response) {
+        message = 'Cannot connect to server. Check your connection or use seeded credentials.';
+      }
+      setErrorMessage(message);
     } finally {
       setLoading(false);
     }
@@ -395,7 +398,6 @@ const styles = StyleSheet.create({
     color: '#64748B',
     textAlign: 'center',
     lineHeight: 18,
-    marginTop: 24,
-    paddingHorizontal: 16,
+    marginTop: 16,
   },
 });

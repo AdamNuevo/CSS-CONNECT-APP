@@ -11,6 +11,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { colors, spacing, radius, typography } from '../../src/theme/tokens';
 import { mobileApi } from '../../src/services/dashboard';
+import { useAuth } from '../../src/context/AuthContext';
+import { FacultyClassesView } from '../../src/components/faculty/FacultyClassesView';
 import type { EnrichedClassSchedule, DayOfWeek } from '@ccs-hub/shared';
 
 interface DayItem {
@@ -68,7 +70,7 @@ const DEFAULT_WEDNESDAY_CLASSES = [
   },
 ];
 
-export default function ScheduleScreen() {
+function StudentScheduleView() {
   const insets = useSafeAreaInsets();
   const [selectedDay, setSelectedDay] = useState<DayOfWeek>('wednesday');
 
@@ -188,6 +190,14 @@ export default function ScheduleScreen() {
       </ScrollView>
     </View>
   );
+}
+
+export default function ScheduleScreen() {
+  const { user } = useAuth();
+  if (user?.role === 'faculty') {
+    return <FacultyClassesView />;
+  }
+  return <StudentScheduleView />;
 }
 
 const styles = StyleSheet.create({

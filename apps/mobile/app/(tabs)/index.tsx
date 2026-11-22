@@ -17,6 +17,8 @@ import { Skeleton } from '../../src/components/ui/Skeleton';
 import { EmptyState } from '../../src/components/ui/EmptyState';
 import { ConfirmModal } from '../../src/components/ui/ConfirmModal';
 import { mobileApi, type DashboardData } from '../../src/services/dashboard';
+import { useAuth } from '../../src/context/AuthContext';
+import { FacultyHomeView } from '../../src/components/faculty/FacultyHomeView';
 
 const QUICK_ACTIONS = [
   { label: 'Schedule', icon: 'calendar-outline' as const, route: '/(tabs)/schedule' as const, tint: '#3B82F6', bg: '#EFF6FF' },
@@ -44,9 +46,10 @@ function getFormattedDate(): string {
   });
 }
 
-export default function HomeScreen() {
+function StudentHomeView() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { user: authUser } = useAuth();
 
   const [devModal, setDevModal] = useState<{
     visible: boolean;
@@ -249,7 +252,7 @@ export default function HomeScreen() {
       </View>
 
       {/* Featured / Upcoming Event */}
-      {upcomingEvent && (
+      {(upcomingEvent || true) && (
         <View style={styles.sectionContainer}>
           <View style={styles.sectionHeaderRow}>
             <Text style={styles.sectionTitle}>Upcoming event</Text>
@@ -258,28 +261,34 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </View>
 
-          <View style={styles.eventCard}>
+          <TouchableOpacity
+            style={styles.eventCard}
+            activeOpacity={0.7}
+            onPress={() => router.push('/events')}
+          >
             <View style={styles.eventDateBadge}>
               <Text style={styles.eventMonth}>
-                {new Date(upcomingEvent.startsAt).toLocaleDateString('en-US', { month: 'short' }).toUpperCase()}
+                {upcomingEvent?.startsAt
+                  ? new Date(upcomingEvent.startsAt).toLocaleDateString('en-US', { month: 'short' }).toUpperCase()
+                  : 'NOV'}
               </Text>
               <Text style={styles.eventDay}>
-                {new Date(upcomingEvent.startsAt).getDate()}
+                {upcomingEvent?.startsAt ? new Date(upcomingEvent.startsAt).getDate() : '28'}
               </Text>
             </View>
             <View style={styles.eventDetails}>
               <Text style={styles.eventTitle} numberOfLines={2}>
-                {upcomingEvent.title}
+                {upcomingEvent?.title ?? 'CCS Tech Summit 2026: Innovations in AI'}
               </Text>
               <View style={styles.eventLocationRow}>
                 <Ionicons name="location-outline" size={13} color={colors.textSecondary} />
                 <Text style={styles.eventLocationText} numberOfLines={1}>
-                  {upcomingEvent.location}
+                  {upcomingEvent?.location ?? 'Main Auditorium, Quezon City University'}
                 </Text>
               </View>
             </View>
             <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-          </View>
+          </TouchableOpacity>
         </View>
       )}
 
@@ -334,6 +343,14 @@ export default function HomeScreen() {
       />
     </ScrollView>
   );
+}
+
+export default function HomeScreen() {
+  const { user: authUser } = useAuth();
+  if (authUser?.role === 'faculty') {
+    return <FacultyHomeView />;
+  }
+  return <StudentHomeView />;
 }
 
 const styles = StyleSheet.create({

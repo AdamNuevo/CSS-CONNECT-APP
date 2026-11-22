@@ -20,6 +20,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { dashboardService } from '../../src/services/dashboard';
 import { useAuth } from '../../src/context/AuthContext';
 import { ConfirmModal } from '../../src/components/ui/ConfirmModal';
+import { FacultyOrgView } from '../../src/components/faculty/FacultyOrgView';
 import type { Organization, MyMembership, OrgApplication } from '@ccs-hub/shared';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -50,7 +51,7 @@ function getOrgLogo(nameOrId?: string) {
   return ORG_LOGOS.msc;
 }
 
-export default function OrganizationsScreen() {
+function StudentOrgView() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const qc = useQueryClient();
@@ -1062,6 +1063,14 @@ function MembershipApplicationModal({
       </View>
     </Modal>
   );
+}
+
+export default function OrganizationsScreen() {
+  const { user } = useAuth();
+  if (user?.role === 'faculty') {
+    return <FacultyOrgView />;
+  }
+  return <StudentOrgView />;
 }
 
 // ══════════════════════════════════════════════════════════════════

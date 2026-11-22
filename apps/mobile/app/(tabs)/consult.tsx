@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,13 +10,18 @@ import {
   ActivityIndicator,
   RefreshControl,
   Dimensions,
+  BackHandler,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNavigation } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, radius, typography } from '../../src/theme/tokens';
 import { mobileApi } from '../../src/services/dashboard';
 import { ConfirmModal } from '../../src/components/ui/ConfirmModal';
+import { useTabBar } from '../../src/context/TabBarContext';
+import { useAuth } from '../../src/context/AuthContext';
+import { FacultyConsultView } from '../../src/components/faculty/FacultyConsultView';
 import type {
   ProfessorWithSlots,
   SlotAvailability,
@@ -141,9 +146,11 @@ const DEFAULT_REQUESTS: MockRequest[] = [
   },
 ];
 
-export default function ConsultScreen() {
+function StudentConsultView() {
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation();
   const queryClient = useQueryClient();
+  const { setTabBarHidden } = useTabBar();
 
   // Navigation / Tabs
   const [activeTab, setActiveTab] = useState<'professors' | 'requests'>('professors');
@@ -152,6 +159,23 @@ export default function ConsultScreen() {
   // Booking Flow Steps: 0 = None, 1 = Choose Schedule, 2 = Consultation Request, 3 = Review Request, 4 = Request Submitted
   const [bookingStep, setBookingStep] = useState<number>(0);
   const [selectedProf, setSelectedProf] = useState<MockProf | null>(null);
+
+  // Hide bottom tab bar whenever user is inside any booking step
+  useEffect(() => {
+    setTabBarHidden(bookingStep > 0);
+  }, [bookingStep, setTabBarHidden]);
+
+  // Handle Android hardware back press when in booking flow
+  useEffect(() => {
+    if (bookingStep > 0) {
+      const onBackPress = () => {
+        handleBack();
+        return true;
+      };
+      const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+      return () => sub.remove();
+    }
+  }, [bookingStep]);
 
   // Booking Form State
   const [selectedDateIdx, setSelectedDateIdx] = useState(0);
@@ -884,6 +908,14 @@ export default function ConsultScreen() {
   );
 }
 
+export default function ConsultScreen() {
+  const { user } = useAuth();
+  if (user?.role === 'faculty') {
+    return <FacultyConsultView />;
+  }
+  return <StudentConsultView />;
+}
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -1143,7 +1175,7 @@ const styles = StyleSheet.create({
   flowScrollContent: {
     paddingHorizontal: 20,
     paddingTop: 16,
-    paddingBottom: 40,
+    paddingBottom: 64,
   },
 
   /* Mini Prof Card in Flow */

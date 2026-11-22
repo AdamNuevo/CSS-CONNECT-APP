@@ -90,15 +90,19 @@ export default function GradesScreen() {
     <View style={[styles.container, { paddingTop: Math.max(insets.top, 20) + 12 }]}>
       {/* ── Top Header ── */}
       <View style={styles.header}>
-        {router.canGoBack() && (
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => router.back()}
-            accessibilityLabel="Go back"
-          >
-            <Ionicons name="arrow-back" size={24} color="#0F224A" />
-          </TouchableOpacity>
-        )}
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace('/(tabs)');
+            }
+          }}
+          accessibilityLabel="Go back"
+        >
+          <Ionicons name="arrow-back" size={24} color="#0F224A" />
+        </TouchableOpacity>
         <Text style={styles.headerTitle}>Grades</Text>
       </View>
 
