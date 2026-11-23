@@ -1,20 +1,22 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Tabs, useRouter, usePathname } from 'expo-router';
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../src/context/AuthContext';
 import { useTabBar } from '../../src/context/TabBarContext';
 
-// ─── Color tokens ────────────────────────────────────────────────────────────
+// ─── Color tokens ─────────────────────────────────────────────────────────────
 const ACTIVE   = '#1D4ED8';   // blue-700
 const INACTIVE = '#94A3B8';   // slate-400
 const FAB_BG   = '#2563EB';   // blue-600
+const NAV_BG   = '#FFFFFF';
 
 interface TabBarRoute {
   key: string;
@@ -36,25 +38,31 @@ interface CustomTabBarProps {
   };
 }
 
-// ─── Custom Floating Pill Tab Bar ─────────────────────────────────────────────
+// ─── Custom Tab Bar ────────────────────────────────────────────────────────────
+// All hooks are called unconditionally at the top; role-based rendering happens
+// after all hooks are resolved to avoid the "fewer/more hooks" React error.
 function CustomTabBar({ state, descriptors, navigation }: CustomTabBarProps) {
+  // ── ALL hooks first ──────────────────────────────────────────────────────────
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const pathname = usePathname();
   const { isTabBarHidden } = useTabBar();
+  const { user } = useAuth();
 
-  // Hide tab bar when signalled by child screens (e.g. booking flow in consult.tsx)
-  if (isTabBarHidden) return null;
+  // ── Derived values ───────────────────────────────────────────────────────────
+  const isFaculty = user?.role === 'faculty';
 
-  // If the active screen requested hiding the tab bar, do not render
-  if (state && descriptors && state.routes && typeof state.index === 'number') {
-    const currentRoute = state.routes[state.index];
-    const options = descriptors[currentRoute.key]?.options;
-    if (options?.tabBarStyle?.display === 'none' || options?.tabBarVisible === false) {
-      return null;
+  // Check if the active screen opted out of the tab bar
+  const screenWantsHidden = (() => {
+    if (state && descriptors && state.routes && typeof state.index === 'number') {
+      const currentRoute = state.routes[state.index];
+      const options = descriptors[currentRoute.key]?.options;
+      return options?.tabBarStyle?.display === 'none' || options?.tabBarVisible === false;
     }
-  }
+    return false;
+  })();
 
+  // ── Shared helpers ───────────────────────────────────────────────────────────
   const checkFocused = (routeName: string) => {
     if (state && typeof state.index === 'number' && state.routes && state.routes[state.index]) {
       const activeName = state.routes[state.index].name;
@@ -63,12 +71,8 @@ function CustomTabBar({ state, descriptors, navigation }: CustomTabBarProps) {
     if (routeName === 'index') {
       return pathname === '/' || pathname === '/(tabs)' || pathname === '/(tabs)/index';
     }
-    if (routeName === 'org') {
-      return pathname.includes('org');
-    }
-    if (routeName === 'schedule') {
-      return pathname.includes('schedule');
-    }
+    if (routeName === 'org') return pathname.includes('org');
+    if (routeName === 'schedule') return pathname.includes('schedule');
     return pathname.includes(routeName);
   };
 
@@ -94,47 +98,97 @@ function CustomTabBar({ state, descriptors, navigation }: CustomTabBarProps) {
     }
   };
 
-  const isClassesActive = checkFocused('schedule');
-
-  // Route definitions
-  const routeConfig: Record<string, { label: string; icon: keyof typeof Ionicons.glyphMap; iconFocused: keyof typeof Ionicons.glyphMap }> = {
-    index:    { label: 'Home',    icon: 'home-outline',               iconFocused: 'home' },
-    org:      { label: 'Org',     icon: 'people-outline',             iconFocused: 'people' },
-    consult:  { label: 'Consult', icon: 'chatbubble-ellipses-outline', iconFocused: 'chatbubble-ellipses' },
-    more:     { label: 'More',    icon: 'grid-outline',               iconFocused: 'grid' },
-  };
-
-  const leftRoutes = ['index', 'org'];
-  const rightRoutes = ['consult', 'more'];
+  // ── Early returns AFTER all hooks ────────────────────────────────────────────
+  if (isTabBarHidden || screenWantsHidden) return null;
 
   const bottomSafe = Math.max(insets.bottom, 8);
 
+  // ────────────────────────────────────────────────────────────────────────────
+  // FACULTY: Flat tab bar with 6 tabs (Home | Org | Classes | Consult | Locator | Research)
+  // ────────────────────────────────────────────────────────────────────────────
+  if (isFaculty) {
+    const facultyTabs: Array<{
+      name: string;
+      label: string;
+      icon: keyof typeof Ionicons.glyphMap;
+      iconFocused: keyof typeof Ionicons.glyphMap;
+    }> = [
+      { name: 'index',    label: 'Home',     icon: 'home-outline',               iconFocused: 'home' },
+      { name: 'org',      label: 'Org',      icon: 'people-outline',             iconFocused: 'people' },
+      { name: 'schedule', label: 'Classes',  icon: 'calendar-outline',           iconFocused: 'calendar' },
+      { name: 'consult',  label: 'Consult',  icon: 'chatbubble-ellipses-outline', iconFocused: 'chatbubble-ellipses' },
+      { name: 'locator',  label: 'Locator',  icon: 'location-outline',           iconFocused: 'location' },
+      { name: 'research', label: 'Research', icon: 'book-outline',               iconFocused: 'book' },
+    ];
+
+    return (
+      <View style={[styles.facultyBarOuter, { paddingBottom: bottomSafe }]}>
+        <View style={styles.facultyBar}>
+          {facultyTabs.map((tab) => {
+            const focused = checkFocused(tab.name);
+            return (
+              <TouchableOpacity
+                key={tab.name}
+                style={styles.facultyTabBtn}
+                onPress={() => handleTabPress(tab.name)}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={tab.label}
+              >
+                <Ionicons
+                  name={focused ? tab.iconFocused : tab.icon}
+                  size={22}
+                  color={focused ? ACTIVE : INACTIVE}
+                />
+                <Text style={[styles.tabLabel, focused && styles.tabLabelActive]}>
+                  {tab.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </View>
+    );
+  }
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // STUDENT: Floating pill with center FAB (Home | Org | [Classes] | Consult | More)
+  // ────────────────────────────────────────────────────────────────────────────
+  const isClassesActive = checkFocused('schedule');
+
+  const routeConfig: Record<string, { label: string; icon: keyof typeof Ionicons.glyphMap; iconFocused: keyof typeof Ionicons.glyphMap }> = {
+    index:   { label: 'Home',    icon: 'home-outline',               iconFocused: 'home' },
+    org:     { label: 'Org',     icon: 'people-outline',             iconFocused: 'people' },
+    consult: { label: 'Consult', icon: 'chatbubble-ellipses-outline', iconFocused: 'chatbubble-ellipses' },
+    more:    { label: 'More',    icon: 'grid-outline',               iconFocused: 'grid' },
+  };
+
+  const leftRoutes  = ['index', 'org'];
+  const rightRoutes = ['consult', 'more'];
+
   return (
     <View
-      style={[
-        styles.outerWrapper,
-        { paddingBottom: bottomSafe },
-      ]}
+      style={[styles.outerWrapper, { paddingBottom: bottomSafe }]}
       pointerEvents="box-none"
     >
-      {/* Center FAB — Classes (Elevated circular button in the middle) */}
+      {/* Center Classes FAB — elevated above pill */}
       <TouchableOpacity
         style={styles.fab}
         onPress={() => handleTabPress('schedule')}
         activeOpacity={0.85}
-        accessibilityLabel="Classes"
         accessibilityRole="button"
+        accessibilityLabel="Classes"
       >
         <View style={[styles.fabInner, isClassesActive && styles.fabInnerActive]}>
           <Ionicons
             name={isClassesActive ? 'calendar' : 'calendar-outline'}
-            size={24}
+            size={26}
             color="#FFFFFF"
           />
         </View>
       </TouchableOpacity>
 
-      {/* Pill container */}
+      {/* Pill row */}
       <View style={styles.pill}>
         {/* Left two tabs: Home & Org */}
         {leftRoutes.map((routeName) => {
@@ -207,9 +261,34 @@ function CustomTabBar({ state, descriptors, navigation }: CustomTabBarProps) {
 
 const PILL_HEIGHT = 62;
 const FAB_SIZE    = 54;
-const PROTRUSION  = 14; // 14px extends above the pill top edge
+const PROTRUSION  = 14; // How far the FAB extends above the pill top edge
 
 const styles = StyleSheet.create({
+  // ── Faculty flat bar ──────────────────────────────────────────────────────────
+  facultyBarOuter: {
+    backgroundColor: NAV_BG,
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+    shadowColor: '#1E293B',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  facultyBar: {
+    flexDirection: 'row',
+    height: 60,
+    alignItems: 'center',
+  },
+  facultyTabBtn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
+    paddingVertical: 6,
+  },
+
+  // ── Student floating pill ─────────────────────────────────────────────────────
   outerWrapper: {
     position: 'absolute',
     bottom: 0,
@@ -275,6 +354,8 @@ const styles = StyleSheet.create({
     gap: 2,
     paddingVertical: 6,
   },
+
+  // ── Shared label styles ───────────────────────────────────────────────────────
   tabLabel: {
     fontSize: 11,
     fontWeight: '500',
@@ -301,6 +382,8 @@ export default function TabLayout() {
       <Tabs.Screen name="schedule" />
       <Tabs.Screen name="consult" />
       <Tabs.Screen name="more" />
+      <Tabs.Screen name="locator" />
+      <Tabs.Screen name="research" />
     </Tabs>
   );
 }

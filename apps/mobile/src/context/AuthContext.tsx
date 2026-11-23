@@ -122,8 +122,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         err.message?.includes('Network request failed') ||
         err.message?.includes('timeout') ||
         err.message?.includes('ECONNREFUSED') ||
-        err.message?.includes('connect') ||
-        (err.response?.status === 401); // also try fallback on 401
+        err.message?.includes('connect');
+        // NOTE: Do NOT include 401 — that means wrong credentials on the actual server
 
       if (isNetworkIssue) {
         const normalized = input.email.toLowerCase().trim();
@@ -141,17 +141,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
         // ── Seeded Faculty Accounts Check ──
+        // Only match exact known faculty emails or @ccs.qcu.edu.ph domain
+        // (students use @students.qcu.edu.ph — a different domain)
         const isFaculty =
           normalized === 'jose.reyes@ccs.qcu.edu.ph' ||
           normalized === 'ana.delacruz@ccs.qcu.edu.ph' ||
           normalized === 'ramon.garcia@ccs.qcu.edu.ph' ||
           normalized === 'faculty@ccs.qcu.edu.ph' ||
-          normalized.includes('reyes') ||
-          normalized.includes('delacruz') ||
-          normalized.includes('garcia') ||
-          normalized.includes('faculty') ||
-          normalized.includes('prof') ||
-          (normalized.endsWith('@ccs.qcu.edu.ph') && !normalized.includes('student'));
+          normalized === 'admin@ccs.qcu.edu.ph' ||
+          (normalized.endsWith('@ccs.qcu.edu.ph') && !normalized.endsWith('@students.qcu.edu.ph'));
 
         if (isFaculty) {
           let firstName = 'Jose';
@@ -190,13 +188,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
         // ── Seeded Student Accounts Check ──
+        // Students use the @students.qcu.edu.ph domain
         const isStudent =
-          normalized === 'student@ccs.qcu.edu.ph' ||
-          normalized.includes('student') ||
           normalized.endsWith('@students.qcu.edu.ph') ||
-          normalized.includes('kristine') ||
-          normalized.includes('mark') ||
-          normalized.includes('jessa');
+          normalized === 'student@ccs.qcu.edu.ph';
 
         if (isStudent) {
           let firstName = 'Juan';

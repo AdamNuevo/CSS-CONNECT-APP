@@ -1,4 +1,4 @@
-import { useState } from 'react';
+aimport { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../services/api';
 
@@ -143,45 +143,45 @@ export function ConsultationsPage({
     <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '24px 16px', fontFamily: 'system-ui, sans-serif' }}>
       {/* Header — hidden when rendered inside PortalLayout which has its own nav */}
       {!hideShell && (
-      <header
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          backgroundColor: '#1E2A78',
-          color: '#fff',
-          padding: '20px 24px',
-          borderRadius: '12px',
-          marginBottom: '24px',
-        }}
-      >
-        <div>
-          <span style={{ fontSize: '12px', textTransform: 'uppercase', letterSpacing: '1px', color: '#93C5FD' }}>
-            CCS Hub Faculty Portal
-          </span>
-          <h1 style={{ margin: '4px 0 0 0', fontSize: '24px', fontWeight: 700 }}>
-            Consultation Management
-          </h1>
-          <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#E0E7FF' }}>
-            Logged in as Prof. {user.firstName} {user.lastName} ({user.email})
-          </p>
-        </div>
-        <button
-          onClick={onSignOut}
+        <header
           style={{
-            backgroundColor: '#DC2626',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            backgroundColor: '#1E2A78',
             color: '#fff',
-            border: 'none',
-            padding: '8px 16px',
-            borderRadius: '6px',
-            cursor: 'pointer',
-            fontWeight: 600,
-            fontSize: '13px',
+            padding: '20px 24px',
+            borderRadius: '12px',
+            marginBottom: '24px',
           }}
         >
-          Sign Out
-        </button>
-      </header>
+          <div>
+            <span style={{ fontSize: '12px', textTransform: 'uppercase', letterSpacing: '1px', color: '#93C5FD' }}>
+              CCS Hub Faculty Portal
+            </span>
+            <h1 style={{ margin: '4px 0 0 0', fontSize: '24px', fontWeight: 700 }}>
+              Consultation Management
+            </h1>
+            <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#E0E7FF' }}>
+              Logged in as Prof. {user.firstName} {user.lastName} ({user.email})
+            </p>
+          </div>
+          <button
+            onClick={onSignOut}
+            style={{
+              backgroundColor: '#DC2626',
+              color: '#fff',
+              border: 'none',
+              padding: '8px 16px',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontWeight: 600,
+              fontSize: '13px',
+            }}
+          >
+            Sign Out
+          </button>
+        </header>
       )}
 
       {/* Main Grid: Requests and Weekly Availability */}
@@ -240,8 +240,8 @@ export function ConsultationsPage({
                 const statusColor = isApproved
                   ? { bg: '#D1FAE5', text: '#065F46' }
                   : isDeclined
-                  ? { bg: '#FEE2E2', text: '#991B1B' }
-                  : { bg: '#FEF3C7', text: '#B45309' };
+                    ? { bg: '#FEE2E2', text: '#991B1B' }
+                    : { bg: '#FEF3C7', text: '#B45309' };
 
                 return (
                   <div
